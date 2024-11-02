@@ -41,6 +41,9 @@ spec:
                 project:
                   type: string
                   description: Project associated with the deployment.
+                user:
+                  type: string
+                  description: User who created the deployment.
                 replicas:
                   type: integer
                   description: Number of replicas for the deployment.
@@ -96,29 +99,34 @@ spec:
                 - name
                 - project
                 - containers
-            history:
-              type: array
-              description: History of the KookedDeployment
-              items:
-                type: object
-                description: History entry for the deployment.
-                properties:
-                  timestamp:
-                    type: string
-                    description: Timestamp of the history entry.
-                  action:
-                    type: string
-                    description: Action performed on the deployment.
-                  user:
-                    type: string
-                    description: User who performed the action.
-                  message:
-                    type: string
-                    description: Message associated with the action.
+                - user
             status:
-              description: Status defines the observed state of WordpressSite
               type: object
+              description: Status defines the observed state of the KookedDeployment.
               x-kubernetes-preserve-unknown-fields: true
+              properties:
+                phase:
+                  type: string
+                  description: Current phase of the deployment.
+                history:
+                  type: array
+                  description: History of the KookedDeployment.
+                  items:
+                    type: object
+                    description: History entry for the deployment.
+                    properties:
+                      timestamp:
+                        type: string
+                        description: Timestamp of the history entry.
+                      action:
+                        type: string
+                        description: Action performed on the deployment.
+                      user:
+                        type: string
+                        description: User who performed the action.
+                      message:
+                        type: string
+                        description: Message associated with the action.
       additionalPrinterColumns:
         - name: Project
           type: string
@@ -134,7 +142,7 @@ spec:
           jsonPath: .metadata.creationTimestamp
         - name: Status
           type: string
-          description: Status of the deployment.
+          description: Status phase of the deployment.
           jsonPath: .status.phase
         - name: Containers
           type: string
