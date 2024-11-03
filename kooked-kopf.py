@@ -627,3 +627,5 @@ class KookedDeploymentStartOperator:
             logging.error(f"Error configuring Traefik RBAC: {e}")
             return False
 
+if __name__ == '__main__':
+    sys.exit(kopf.cli.main())
