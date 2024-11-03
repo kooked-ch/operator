@@ -18,3 +18,8 @@ import re
 from datetime import datetime, timezone
 import time
 
+
+@kopf.on.delete('kooked.ch', 'v1', 'kookeddeployments')
+def on_delete_kookeddeployment(spec, name, namespace, **kwargs):
+    KookedDeploymentOperator(name, namespace, spec).delete_kookeddeployment(spec)
+
