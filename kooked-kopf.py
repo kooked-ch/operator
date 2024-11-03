@@ -322,7 +322,7 @@ class KookedDeploymentOperator:
                 logging.info(f"   ↳ [{self.namespace}/{self.name}] {resource_type} created successfully")
             except ApiException as e:
                 if e.status == 409:
-                    logging.info(f" ↳ [{self.namespace}/{self.name}] {resource_type} already exists")
+                    logging.info(f"   ↳ [{self.namespace}/{self.name}] {resource_type} already exists")
                 else:
                     logging.error(f"Error creating {resource_type}: {e}")
 
