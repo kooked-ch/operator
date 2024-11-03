@@ -175,3 +175,113 @@ class KookedDeploymentOperator:
                 logging.error(f"Error creating certificate: {e}")
 
 
+    def create_ingress_routes(self, domain, port):
+        logging.info(f" ↳ [{self.namespace}/{self.name}] Creating IngressRoutes for {domain}")
+
+        # Create HTTP to HTTPS redirect middleware
+        middleware = {
+            "apiVersion": "traefik.containo.us/v1alpha1",
+            "kind": "Middleware",
+            "metadata": {
+                "name": f"{self.name}-redirect",
+                "namespace": self.namespace
+            },
+            "spec": {
+                "redirectScheme": {
+                    "scheme": "https",
+                    "permanent": True
+                }
+            }
+        }
+
+        # Create HTTP IngressRoute (for redirect)
+        http_route = {
+            "apiVersion": "traefik.containo.us/v1alpha1",
+            "kind": "IngressRoute",
+            "metadata": {
+                "name": f"{self.name}-http",
+                "namespace": self.namespace
+            },
+            "spec": {
+                "entryPoints": ["web"],
+                "routes": [{
+                    "match": f"Host(`{domain}`)",
+                    "kind": "Rule",
+                    "middlewares": [{
+                        "name": f"{self.name}-redirect",
+                        "namespace": self.namespace
+                    }],
+                    "services": [{
+                        "name": self.name,
+                        "port": 80
+                    }]
+                }]
+            }
+        }
+
+        # Create HTTPS IngressRoute
+        https_route = {
+            "apiVersion": "traefik.containo.us/v1alpha1",
+            "kind": "IngressRoute",
+            "metadata": {
+                "name": f"{self.name}-https",
+                "namespace": self.namespace
+            },
+            "spec": {
+                "entryPoints": ["websecure"],
+                "routes": [{
+                    "match": f"Host(`{domain}`)",
+                    "kind": "Rule",
+                    "services": [{
+                        "name": self.name,
+                        "port": 80
+                    }]
+                }],
+                "tls": {
+                    "secretName": f"{self.name}-tls"
+                }
+            }
+        }
+
+        try:
+            KubernetesAPI.custom.create_namespaced_custom_object(
+                group="traefik.containo.us",
+                version="v1alpha1",
+                namespace=self.namespace,
+                plural="middlewares",
+                body=middleware
+            )
+        except ApiException as e:
+            if e.status == 409:
+                logging.info(f" ↳ [{self.namespace}/{self.name}] Middleware already exists")
+            else:
+                logging.error(f"Error creating Middleware: {e}")
+
+        try:
+            KubernetesAPI.custom.create_namespaced_custom_object(
+                group="traefik.containo.us",
+                version="v1alpha1",
+                namespace=self.namespace,
+                plural="ingressroutes",
+                body=http_route
+            )
+        except ApiException as e:
+            if e.status == 409:
+                logging.info(f" ↳ [{self.namespace}/{self.name}] IngressRoute already exists")
+            else:
+                logging.error(f"Error creating IngressRoute: {e}")
+        
+        try:
+            KubernetesAPI.custom.create_namespaced_custom_object(
+                group="traefik.containo.us",
+                version="v1alpha1",
+                namespace=self.namespace,
+                plural="ingressroutes",
+                body=https_route
+            )
+        except ApiException as e:
+            if e.status == 409:
+                logging.info(f" ↳ [{self.namespace}/{self.name}] IngressRoute already exists")
+            else:
+                logging.error(f"Error creating IngressRoute: {e}")
+
