@@ -348,3 +348,61 @@ class KookedDeploymentOperator:
         # Create Deployment
         self.create_deployment(spec)
 
+    def delete_kookeddeployment(self, spec):
+        logging.info(f"[{self.namespace}/{self.name}] Deleting KookedDeployment")
+        
+        try:
+            # Delete Deployment
+            KubernetesAPI.apps.delete_namespaced_deployment(
+                name=self.name,
+                namespace=self.namespace
+            )
+
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Deployment deleted successfully")
+            
+            # Delete Service
+            KubernetesAPI.core.delete_namespaced_service(
+                name=self.name,
+                namespace=self.namespace
+            )
+
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Service deleted successfully")
+            
+            # Delete Certificate
+            KubernetesAPI.custom.delete_namespaced_custom_object(
+                group="cert-manager.io",
+                version="v1",
+                namespace=self.namespace,
+                plural="certificates",
+                name=self.name
+            )
+
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Certificate deleted successfully")
+            
+            # Delete IngressRoutes
+            for suffix in ['-http', '-https']:
+                KubernetesAPI.custom.delete_namespaced_custom_object(
+                    group="traefik.containo.us",
+                    version="v1alpha1",
+                    namespace=self.namespace,
+                    plural="ingressroutes",
+                    name=f"{self.name}{suffix}"
+                )
+
+            logging.info(f" ↳ [{self.namespace}/{self.name}] IngressRoutes deleted successfully")
+            
+            # Delete Middleware
+            KubernetesAPI.custom.delete_namespaced_custom_object(
+                group="traefik.containo.us",
+                version="v1alpha1",
+                namespace=self.namespace,
+                plural="middlewares",
+                name=f"{self.name}-redirect"
+            )
+
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Middleware deleted successfully")
+            
+            logging.info(f" ↳ [{self.namespace}/{self.name}] All resources deleted successfully")
+        except ApiException as e:
+            logging.error(f"Error deleting resources: {e}")
+
