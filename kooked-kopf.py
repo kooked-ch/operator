@@ -35,3 +35,9 @@ def on_create_kookeddeployment(spec, name, namespace, **kwargs):
     KookedDeploymentOperator(name, namespace, spec).create_kookeddeployment(spec)
 
 
+class classproperty:
+    def __init__(self, func):
+        self.fget = func
+    def __get__(self, instance, owner):
+        return self.fget(owner)
+
