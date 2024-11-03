@@ -196,8 +196,6 @@ class KookedDeploymentOperator:
         except ApiException as e:
             error_msg = f"Error checking existing IngressRoutes: {e}"
             logging.error(error_msg)
-            raise kopf.PermanentError(error_msg)
-
 
         middleware = {
             "apiVersion": "traefik.containo.us/v1alpha1",
