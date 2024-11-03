@@ -342,3 +342,9 @@ class KookedDeploymentOperator:
         except ApiException as e:
             logging.error(f"Error creating deployment: {e}")
 
+    def create_kookeddeployment(self, spec):
+        logging.info(f"[{self.namespace}/{self.name}] Creating KookedDeployment")
+
+        # Create Deployment
+        self.create_deployment(spec)
+
