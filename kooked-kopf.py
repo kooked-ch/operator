@@ -56,7 +56,11 @@ class KubernetesAPI:
         return cls.__singleton
 
     def __init__(self):
-        config.load_kube_config()
+
+        if os.path.exists('/var/run/secrets/kubernetes.io/serviceaccount/token'):
+            config.load_incluster_config()
+        else:
+            config.load_kube_config()
 
         self._custom = client.CustomObjectsApi()
         self._core = client.CoreV1Api()
