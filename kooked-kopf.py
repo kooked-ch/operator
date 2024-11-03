@@ -23,3 +23,9 @@ import time
 def on_delete_kookeddeployment(spec, name, namespace, **kwargs):
     KookedDeploymentOperator(name, namespace, spec).delete_kookeddeployment(spec)
 
+@kopf.on.startup()
+def on_kopf_startup (**kwargs):
+    KookedDeploymentStartOperator.ensure_crd_exists()
+    KookedDeploymentStartOperator.create_cluster_issuer()
+    KookedDeploymentStartOperator.ensure_traefik_rbac()
+
