@@ -29,10 +29,13 @@ def on_kopf_startup (**kwargs):
     KookedDeploymentStartOperator.create_cluster_issuer()
     KookedDeploymentStartOperator.ensure_traefik_rbac()
 
-
 @kopf.on.create('kooked.ch', 'v1', 'kookeddeployments')
 def on_create_kookeddeployment(spec, name, namespace, **kwargs):
     KookedDeploymentOperator(name, namespace, spec).create_kookeddeployment(spec)
+
+@kopf.on.update('kooked.ch', 'v1', 'kookeddeployments')
+def on_update_kookeddeployment(spec, name, namespace, **kwargs):
+    KookedDeploymentOperator(name, namespace, spec).update_kookeddeployment(spec)
 
 
 class classproperty:
@@ -389,6 +392,9 @@ class KookedDeploymentOperator:
 
         # Create Deployment
         self.create_deployment(spec)
+    
+    def update_kookeddeployment(self, spec):
+        logging.info(f"[{self.namespace}/{self.name}] Updating KookedDeployment")
 
     def delete_kookeddeployment(self, spec):
         logging.info(f"[{self.namespace}/{self.name}] Deleting KookedDeployment")
