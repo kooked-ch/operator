@@ -12,7 +12,7 @@ spec:
     shortNames:
       - kd
       - kdeploy
-  scope: Cluster
+  scope: Namespaced
   versions:
     - name: v1
       served: true
@@ -35,9 +35,6 @@ spec:
               description: Desired state of the KookedDeployment
               x-kubernetes-preserve-unknown-fields: true
               properties:
-                name:
-                  type: string
-                  description: Name of the deployment.
                 project:
                   type: string
                   description: Project associated with the deployment.
@@ -96,8 +93,6 @@ spec:
                         type: string
                         description: Name of the database.
               required:
-                - name
-                - project
                 - containers
                 - user
             status:
