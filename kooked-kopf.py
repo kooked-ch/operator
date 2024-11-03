@@ -209,8 +209,11 @@ class KookedDeploymentOperator:
             error_msg = f"Error checking existing IngressRoutes: {e}"
             logging.error(error_msg)
 
+        # Liste pour stocker les middlewares à créer
+        middlewares_to_create = []
 
-        middleware = {
+        # Middleware de redirection HTTPS
+        https_redirect_middleware = {
             "apiVersion": "traefik.containo.us/v1alpha1",
             "kind": "Middleware",
             "metadata": {
@@ -224,6 +227,33 @@ class KookedDeploymentOperator:
                 }
             }
         }
+        middlewares_to_create.append(("middlewares", https_redirect_middleware, "HTTPS Redirect Middleware"))
+
+        logging.info(f"   ↳ [{self.namespace}/{self.name}] Creating HTTPS redirect middleware")
+
+        if path:
+            strip_prefix_middleware = {
+                "apiVersion": "traefik.containo.us/v1alpha1",
+                "kind": "Middleware",
+                "metadata": {
+                    "name": f"{self.name}-strip-prefix",
+                    "namespace": self.namespace
+                },
+                "spec": {
+                    "stripPrefix": {
+                        "prefixes": [path]
+                    }
+                }
+            }
+            middlewares_to_create.append(("middlewares", strip_prefix_middleware, "StripPrefix Middleware"))
+
+            logging.info(f"   ↳ [{self.namespace}/{self.name}] Creating StripPrefix middleware")
+            
+            # Ajouter le middleware stripPrefix à la liste des middlewares pour les routes
+            route_middlewares = [{
+                "name": f"{self.name}-strip-prefix",
+                "namespace": self.namespace
+            }]
 
         # Create HTTP IngressRoute (for redirect)
         http_route = {
@@ -263,6 +293,7 @@ class KookedDeploymentOperator:
                 "routes": [{
                     "match": match_rule,
                     "kind": "Rule",
+                    "middlewares": route_middlewares if path else [],  # Exclude HTTPS redirect middleware
                     "services": [{
                         "name": self.name,
                         "port": 80
@@ -274,8 +305,7 @@ class KookedDeploymentOperator:
             }
         }
 
-        resources_to_create = [
-            ("middlewares", middleware, "Middleware"),
+        resources_to_create = middlewares_to_create + [
             ("ingressroutes", http_route, "HTTP IngressRoute"),
             ("ingressroutes", https_route, "HTTPS IngressRoute")
         ]
@@ -289,6 +319,7 @@ class KookedDeploymentOperator:
                     plural=plural,
                     body=resource
                 )
+                logging.info(f"   ↳ [{self.namespace}/{self.name}] {resource_type} created successfully")
             except ApiException as e:
                 if e.status == 409:
                     logging.info(f" ↳ [{self.namespace}/{self.name}] {resource_type} already exists")
