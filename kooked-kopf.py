@@ -29,3 +29,9 @@ def on_kopf_startup (**kwargs):
     KookedDeploymentStartOperator.create_cluster_issuer()
     KookedDeploymentStartOperator.ensure_traefik_rbac()
 
+
+@kopf.on.create('kooked.ch', 'v1', 'kookeddeployments')
+def on_create_kookeddeployment(spec, name, namespace, **kwargs):
+    KookedDeploymentOperator(name, namespace, spec).create_kookeddeployment(spec)
+
+
