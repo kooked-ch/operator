@@ -133,3 +133,45 @@ class KookedDeploymentOperator:
                 logging.error(f"Error creating service: {e}")
 
 
+    def create_certificate(self, domain):
+        logging.info(f" ↳ [{self.namespace}/{self.name}] Creating TLS certificate for {domain}")
+        
+        certificate = {
+            "apiVersion": "cert-manager.io/v1",
+            "kind": "Certificate",
+            "metadata": {
+                "name": self.name,
+                "namespace": self.namespace
+            },
+            "spec": {
+                "dnsNames": [domain],
+                "issuerRef": {
+                    "name": "letsencrypt-prod",
+                    "kind": "ClusterIssuer"
+                },
+                "secretName": f"{self.name}-tls",
+                "duration": "2160h",
+                "renewBefore": "360h",
+                "privateKey": {
+                    "algorithm": "RSA",
+                    "size": 2048
+                }
+            }
+        }
+
+        try:
+            KubernetesAPI.custom.create_namespaced_custom_object(
+                group="cert-manager.io",
+                version="v1",
+                namespace=self.namespace,
+                plural="certificates",
+                body=certificate
+            )
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Certificate created successfully")
+        except ApiException as e:
+            if e.status == 409:
+                logging.info(f" ↳ [{self.namespace}/{self.name}] Certificate already exists")
+            else:
+                logging.error(f"Error creating certificate: {e}")
+
+
