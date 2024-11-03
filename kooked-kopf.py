@@ -91,3 +91,45 @@ class KookedDeploymentOperator:
         self.name = name
         self.namespace = namespace
 
+
+    def create_service(self, container_spec):
+        logging.info(f" ↳ [{self.namespace}/{self.name}] Creating service")
+
+        service_ports = []
+        for domain in container_spec.get('domains', []):
+            service_ports.append(
+                client.V1ServicePort(
+                    port=80,
+                    target_port=domain.get('port', 80),
+                    protocol="TCP"
+                )
+            )
+
+        service = client.V1Service(
+            api_version="v1",
+            kind="Service",
+            metadata=client.V1ObjectMeta(
+                name=self.name,
+                namespace=self.namespace,
+                labels={"app": self.name}
+            ),
+            spec=client.V1ServiceSpec(
+                selector={"app": self.name},
+                ports=service_ports,
+                type="ClusterIP"
+            )
+        )
+
+        try:
+            KubernetesAPI.core.create_namespaced_service(
+                namespace=self.namespace,
+                body=service
+            )
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Service created successfully")
+        except ApiException as e:
+            if e.status == 409:
+                logging.info(f" ↳ [{self.namespace}/{self.name}] Service already exists")
+            else:
+                logging.error(f"Error creating service: {e}")
+
+
