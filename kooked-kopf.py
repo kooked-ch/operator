@@ -133,7 +133,11 @@ class KookedDeploymentOperator:
                 logging.error(f"Error creating service: {e}")
 
 
-    def create_certificate(self, domain):
+    def create_certificate(self, full_domain):
+        parts = full_domain.split('/')
+        domain = parts[0]
+        path = '/' + '/'.join(parts[1:]) if len(parts) > 1 else None
+
         logging.info(f" ↳ [{self.namespace}/{self.name}] Creating TLS certificate for {domain}")
         
         certificate = {
@@ -175,8 +179,16 @@ class KookedDeploymentOperator:
                 logging.error(f"Error creating certificate: {e}")
 
 
-    def create_ingress_routes(self, domain, port):
-        logging.info(f" ↳ [{self.namespace}/{self.name}] Creating IngressRoutes for {domain}")
+    def create_ingress_routes(self, full_domain, port):
+        parts = full_domain.split('/')
+        domain = parts[0]
+        path = '/' + '/'.join(parts[1:]) if len(parts) > 1 else None
+
+        logging.info(f" ↳ [{self.namespace}/{self.name}] Creating IngressRoutes for {domain}{path if path else ''}")
+
+        match_rule = f"Host(`{domain}`)"
+        if path:
+            match_rule += f" && PathPrefix(`{path}`)"
 
         try:
             existing_routes = KubernetesAPI.custom.list_namespaced_custom_object(
@@ -189,13 +201,14 @@ class KookedDeploymentOperator:
             for route in existing_routes['items']:
                 if 'routes' in route['spec']:
                     for route_rule in route['spec']['routes']:
-                        if 'match' in route_rule and f'Host(`{domain}`)' in route_rule['match']:
-                            error_msg = f"Domain {domain} is already in use by IngressRoute {route['metadata']['name']} in namespace {self.namespace}"
+                        if 'match' in route_rule and match_rule in route_rule['match']:
+                            error_msg = f"Domain {domain}{path if path else ''} is already in use by IngressRoute {route['metadata']['name']} in namespace {self.namespace}"
                             logging.error(f" ↳ [{self.namespace}/{self.name}] {error_msg}")
                             raise kopf.PermanentError(error_msg)  
         except ApiException as e:
             error_msg = f"Error checking existing IngressRoutes: {e}"
             logging.error(error_msg)
+
 
         middleware = {
             "apiVersion": "traefik.containo.us/v1alpha1",
@@ -223,7 +236,7 @@ class KookedDeploymentOperator:
             "spec": {
                 "entryPoints": ["web"],
                 "routes": [{
-                    "match": f"Host(`{domain}`)",
+                    "match": match_rule,
                     "kind": "Rule",
                     "middlewares": [{
                         "name": f"{self.name}-redirect",
@@ -248,7 +261,7 @@ class KookedDeploymentOperator:
             "spec": {
                 "entryPoints": ["websecure"],
                 "routes": [{
-                    "match": f"Host(`{domain}`)",
+                    "match": match_rule,
                     "kind": "Rule",
                     "services": [{
                         "name": self.name,
@@ -261,47 +274,26 @@ class KookedDeploymentOperator:
             }
         }
 
-        try:
-            KubernetesAPI.custom.create_namespaced_custom_object(
-                group="traefik.containo.us",
-                version="v1alpha1",
-                namespace=self.namespace,
-                plural="middlewares",
-                body=middleware
-            )
-        except ApiException as e:
-            if e.status == 409:
-                logging.info(f" ↳ [{self.namespace}/{self.name}] Middleware already exists")
-            else:
-                logging.error(f"Error creating Middleware: {e}")
+        resources_to_create = [
+            ("middlewares", middleware, "Middleware"),
+            ("ingressroutes", http_route, "HTTP IngressRoute"),
+            ("ingressroutes", https_route, "HTTPS IngressRoute")
+        ]
 
-        try:
-            KubernetesAPI.custom.create_namespaced_custom_object(
-                group="traefik.containo.us",
-                version="v1alpha1",
-                namespace=self.namespace,
-                plural="ingressroutes",
-                body=http_route
-            )
-        except ApiException as e:
-            if e.status == 409:
-                logging.info(f" ↳ [{self.namespace}/{self.name}] IngressRoute already exists")
-            else:
-                logging.error(f"Error creating IngressRoute: {e}")
-        
-        try:
-            KubernetesAPI.custom.create_namespaced_custom_object(
-                group="traefik.containo.us",
-                version="v1alpha1",
-                namespace=self.namespace,
-                plural="ingressroutes",
-                body=https_route
-            )
-        except ApiException as e:
-            if e.status == 409:
-                logging.info(f" ↳ [{self.namespace}/{self.name}] IngressRoute already exists")
-            else:
-                logging.error(f"Error creating IngressRoute: {e}")
+        for plural, resource, resource_type in resources_to_create:
+            try:
+                KubernetesAPI.custom.create_namespaced_custom_object(
+                    group="traefik.containo.us",
+                    version="v1alpha1",
+                    namespace=self.namespace,
+                    plural=plural,
+                    body=resource
+                )
+            except ApiException as e:
+                if e.status == 409:
+                    logging.info(f" ↳ [{self.namespace}/{self.name}] {resource_type} already exists")
+                else:
+                    logging.error(f"Error creating {resource_type}: {e}")
 
     def create_deployment(self, spec):
         logging.info(f" ↳ [{self.namespace}/{self.name}] Creating deployment")
@@ -321,6 +313,7 @@ class KookedDeploymentOperator:
             # Create service and ingress for container if it has domains
             if container_spec.get('domains'):
                 self.create_service(container_spec)
+                
                 for domain in container_spec['domains']:
                     # Create certificate for HTTPS
                     self.create_certificate(domain['url'])
