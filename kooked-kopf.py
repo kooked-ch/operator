@@ -86,3 +86,8 @@ class KubernetesAPI:
     def apps(cls):
         return cls.__get()._apps
 
+class KookedDeploymentOperator:
+    def __init__(self, name, namespace, spec):
+        self.name = name
+        self.namespace = namespace
+
