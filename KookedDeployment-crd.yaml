@@ -126,7 +126,7 @@ spec:
         - name: Project
           type: string
           description: Project associated with the deployment.
-          jsonPath: .spec.project
+          jsonPath: .metadata.namespace
         - name: Replicas
           type: integer
           description: Number of replicas for the deployment.
