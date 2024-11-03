@@ -285,3 +285,60 @@ class KookedDeploymentOperator:
             else:
                 logging.error(f"Error creating IngressRoute: {e}")
 
+    def create_deployment(self, spec):
+        logging.info(f" ↳ [{self.namespace}/{self.name}] Creating deployment")
+
+        containers = []
+        for container_spec in spec.get('containers', []):
+            container = client.V1Container(
+                name=container_spec['name'],
+                image=container_spec['image'],
+                ports=[client.V1ContainerPort(container_port=domain.get('port', 80)) 
+                       for domain in container_spec.get('domains', [])],
+                env=[client.V1EnvVar(name=env['name'], value=env['value'])
+                     for env in container_spec.get('environment', [])]
+            )
+            containers.append(container)
+
+            # Create service and ingress for container if it has domains
+            if container_spec.get('domains'):
+                self.create_service(container_spec)
+                for domain in container_spec['domains']:
+                    # Create certificate for HTTPS
+                    self.create_certificate(domain['url'])
+                    # Create Traefik IngressRoutes
+                    self.create_ingress_routes(domain['url'], domain.get('port', 80))
+
+        deployment = client.V1Deployment(
+            api_version="apps/v1",
+            kind="Deployment",
+            metadata=client.V1ObjectMeta(
+                name=self.name,
+                namespace=self.namespace,
+                labels={"app": self.name}
+            ),
+            spec=client.V1DeploymentSpec(
+                replicas=spec.get('replicas', 1),
+                selector=client.V1LabelSelector(
+                    match_labels={"app": self.name}
+                ),
+                template=client.V1PodTemplateSpec(
+                    metadata=client.V1ObjectMeta(
+                        labels={"app": self.name}
+                    ),
+                    spec=client.V1PodSpec(
+                        containers=containers
+                    )
+                )
+            )
+        )
+
+        try:
+            KubernetesAPI.apps.create_namespaced_deployment(
+                namespace=self.namespace,
+                body=deployment
+            )
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Deployment created successfully")
+        except ApiException as e:
+            logging.error(f"Error creating deployment: {e}")
+
