@@ -178,7 +178,27 @@ class KookedDeploymentOperator:
     def create_ingress_routes(self, domain, port):
         logging.info(f" ↳ [{self.namespace}/{self.name}] Creating IngressRoutes for {domain}")
 
-        # Create HTTP to HTTPS redirect middleware
+        try:
+            existing_routes = KubernetesAPI.custom.list_namespaced_custom_object(
+                group="traefik.containo.us",
+                version="v1alpha1",
+                namespace=self.namespace,
+                plural="ingressroutes"
+            )
+
+            for route in existing_routes['items']:
+                if 'routes' in route['spec']:
+                    for route_rule in route['spec']['routes']:
+                        if 'match' in route_rule and f'Host(`{domain}`)' in route_rule['match']:
+                            error_msg = f"Domain {domain} is already in use by IngressRoute {route['metadata']['name']} in namespace {self.namespace}"
+                            logging.error(f" ↳ [{self.namespace}/{self.name}] {error_msg}")
+                            raise kopf.PermanentError(error_msg)  
+        except ApiException as e:
+            error_msg = f"Error checking existing IngressRoutes: {e}"
+            logging.error(error_msg)
+            raise kopf.PermanentError(error_msg)
+
+
         middleware = {
             "apiVersion": "traefik.containo.us/v1alpha1",
             "kind": "Middleware",
