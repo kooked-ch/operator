@@ -1,3 +1,82 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: operator-sa
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: operator-cluster-role
+rules:
+  # Core API permissions
+  - apiGroups: [""]
+    resources: ["configmaps", "pods", "services", "secrets", "namespaces"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Apps permissions
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # CRD permissions
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Cert-manager permissions
+  - apiGroups: ["cert-manager.io"]
+    resources:
+      ["clusterissuers", "certificates", "certificaterequests", "issuers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Custom resource permissions
+  - apiGroups: ["kooked.ch"]
+    resources: ["kookeddeployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # RBAC permissions
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles", "clusterrolebindings", "roles", "rolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Traefik permissions
+  - apiGroups: ["traefik.containo.us"]
+    resources:
+      [
+        "ingressroutes",
+        "ingressroutetcps",
+        "ingressrouteudps",
+        "middlewares",
+        "serverstransports",
+        "tlsoptions",
+        "tlsstores",
+      ]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Events permissions for logging
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+
+  # Status permissions
+  - apiGroups: ["kooked.ch"]
+    resources: ["kookeddeployments/status"]
+    verbs: ["get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: operator-cluster-rolebinding
+subjects:
+  - kind: ServiceAccount
+    name: operator-sa
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: operator-cluster-role
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -16,7 +95,7 @@ spec:
       serviceAccountName: operator-sa
       containers:
         - name: operator
-          image: ghcr.io/kooked-ch/operator:1.0.1
+          image: ghcr.io/kooked-ch/operator:1.1.2
           resources:
             limits:
               cpu: 200m
@@ -24,36 +103,3 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: operator-sa
-  namespace: kube-system
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: operator-role
-  namespace: kube-system
-rules:
-  - apiGroups: [""]
-    resources: ["pods", "services", "configmaps"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["apps"]
-    resources: ["deployments"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: operator-rolebinding
-  namespace: kube-system
-subjects:
-  - kind: ServiceAccount
-    name: operator-sa
-    namespace: kube-system
-roleRef:
-  kind: Role
-  name: operator-role
-  apiGroup: rbac.authorization.k8s.io
