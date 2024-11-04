@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.9-bullseye
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
@@ -7,5 +7,4 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
-ENV ENVIRONMENT=production
 CMD ["python", "kooked-kopf.py", "run", "-A"]
