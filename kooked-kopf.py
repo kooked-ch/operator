@@ -17,15 +17,18 @@ import yaml
 def on_delete_kookeddeployment(spec, name, namespace, **kwargs):
     KookedDeploymentOperator(name, namespace, spec).delete_kookeddeployment(spec)
 
+
 @kopf.on.startup()
 def on_kopf_startup(**kwargs):
     KookedDeploymentStartOperator.ensure_crd_exists()
     KookedDeploymentStartOperator.create_cluster_issuer()
     KookedDeploymentStartOperator.ensure_traefik_rbac()
 
+
 @kopf.on.create('kooked.ch', 'v1', 'kookeddeployments')
 def on_create_kookeddeployment(spec, name, namespace, **kwargs):
     KookedDeploymentOperator(name, namespace, spec).create_kookeddeployment(spec)
+
 
 @kopf.on.update('kooked.ch', 'v1', 'kookeddeployments')
 def on_update_kookeddeployment(spec, name, namespace, **kwargs):
@@ -208,10 +211,10 @@ class KookedDeploymentOperator:
             error_msg = f"Error checking existing IngressRoutes: {e}"
             logging.error(error_msg)
 
-        # Liste pour stocker les middlewares à créer
+        # List to store middleware to create
         middlewares_to_create = []
 
-        # Middleware de redirection HTTPS
+        # HTTPS redirection middleware
         https_redirect_middleware = {
             "apiVersion": "traefik.containo.us/v1alpha1",
             "kind": "Middleware",
@@ -342,11 +345,8 @@ class KookedDeploymentOperator:
             # Create service and ingress for container if it has domains
             if container_spec.get('domains'):
                 self.create_service(container_spec)
-
                 for domain in container_spec['domains']:
-                    # Create certificate for HTTPS
                     self.create_certificate(domain['url'])
-                    # Create Traefik IngressRoutes
                     self.create_ingress_routes(domain['url'], domain.get('port', 80))
 
         deployment = client.V1Deployment(
