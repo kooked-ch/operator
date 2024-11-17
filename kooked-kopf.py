@@ -147,7 +147,7 @@ class KookedDeploymentOperator:
             "apiVersion": "cert-manager.io/v1",
             "kind": "Certificate",
             "metadata": {
-                "name": self.name,
+                "name": domain.replace('.', '-'),
                 "namespace": self.namespace
             },
             "spec": {
@@ -156,7 +156,7 @@ class KookedDeploymentOperator:
                     "name": "letsencrypt-prod",
                     "kind": "ClusterIssuer"
                 },
-                "secretName": f"{self.name}-tls",
+                "secretName": f"{domain.replace('.', '-')}-tls",
                 "duration": "2160h",
                 "renewBefore": "360h",
                 "privateKey": {
@@ -301,7 +301,7 @@ class KookedDeploymentOperator:
                     }]
                 }],
                 "tls": {
-                    "secretName": f"{self.name}-tls"
+                    "secretName": f"{domain.replace('.', '-')}-tls"
                 }
             }
         }
@@ -458,7 +458,6 @@ class KookedDeploymentStartOperator:
         crd_name = "kookeddeployments.kooked.ch"
 
         try:
-            # Vérifiez si le CRD existe
             crd_list = api_extensions_instance.list_custom_resource_definition()
             crd_exists = any(crd.metadata.name == crd_name for crd in crd_list.items)
 
