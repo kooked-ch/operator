@@ -137,17 +137,14 @@ class KookedDeploymentOperator:
             else:
                 logging.error(f"Error creating service: {e}")
 
-    def create_certificate(self, full_domain):
-        parts = full_domain.split('/')
-        domain = parts[0]
-
+    def create_certificate(self, domain):
         logging.info(f" ↳ [{self.namespace}/{self.name}] Creating TLS certificate for {domain}")
 
         certificate = {
             "apiVersion": "cert-manager.io/v1",
             "kind": "Certificate",
             "metadata": {
-                "name": domain.replace('.', '-'),
+                "name": self.name,
                 "namespace": self.namespace
             },
             "spec": {
@@ -156,7 +153,7 @@ class KookedDeploymentOperator:
                     "name": "letsencrypt-prod",
                     "kind": "ClusterIssuer"
                 },
-                "secretName": f"{domain.replace('.', '-')}-tls",
+                "secretName": f"{self.name}-tls",
                 "duration": "2160h",
                 "renewBefore": "360h",
                 "privateKey": {
@@ -181,16 +178,10 @@ class KookedDeploymentOperator:
             else:
                 logging.error(f"Error creating certificate: {e}")
 
-    def create_ingress_routes(self, full_domain, port):
-        parts = full_domain.split('/')
-        domain = parts[0]
-        path = '/' + '/'.join(parts[1:]) if len(parts) > 1 else None
-
+    def create_ingress_routes(self, domain, port):
         logging.info(f" ↳ [{self.namespace}/{self.name}] Creating IngressRoutes for {domain}{path if path else ''}")
 
         match_rule = f"Host(`{domain}`)"
-        if path:
-            match_rule += f" && PathPrefix(`{path}`)"
 
         try:
             existing_routes = KubernetesAPI.custom.list_namespaced_custom_object(
@@ -204,7 +195,7 @@ class KookedDeploymentOperator:
                 if 'routes' in route['spec']:
                     for route_rule in route['spec']['routes']:
                         if 'match' in route_rule and match_rule in route_rule['match']:
-                            error_msg = f"Domain {domain}{path if path else ''} is already in use by IngressRoute {route['metadata']['name']} in namespace {self.namespace}"
+                            error_msg = f"Domain {domain} is already in use by IngressRoute {route['metadata']['name']}"
                             logging.error(f" ↳ [{self.namespace}/{self.name}] {error_msg}")
                             raise kopf.PermanentError(error_msg)
         except ApiException as e:
@@ -232,29 +223,6 @@ class KookedDeploymentOperator:
         middlewares_to_create.append(("middlewares", https_redirect_middleware, "HTTPS Redirect Middleware"))
 
         logging.info(f"   ↳ [{self.namespace}/{self.name}] Creating HTTPS redirect middleware")
-
-        if path:
-            strip_prefix_middleware = {
-                "apiVersion": "traefik.containo.us/v1alpha1",
-                "kind": "Middleware",
-                "metadata": {
-                    "name": f"{self.name}-strip-prefix",
-                    "namespace": self.namespace
-                },
-                "spec": {
-                    "stripPrefix": {
-                        "prefixes": [path]
-                    }
-                }
-            }
-            middlewares_to_create.append(("middlewares", strip_prefix_middleware, "StripPrefix Middleware"))
-
-            logging.info(f"   ↳ [{self.namespace}/{self.name}] Creating StripPrefix middleware")
-
-            route_middlewares = [{
-                "name": f"{self.name}-strip-prefix",
-                "namespace": self.namespace
-            }]
 
         # Create HTTP IngressRoute (for redirect)
         http_route = {
@@ -294,14 +262,13 @@ class KookedDeploymentOperator:
                 "routes": [{
                     "match": match_rule,
                     "kind": "Rule",
-                    "middlewares": route_middlewares if path else [],  # Exclude HTTPS redirect middleware
                     "services": [{
                         "name": self.name,
                         "port": 80
                     }]
                 }],
                 "tls": {
-                    "secretName": f"{domain.replace('.', '-')}-tls"
+                    "secretName": f"{self.name}-tls"
                 }
             }
         }
