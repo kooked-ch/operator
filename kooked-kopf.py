@@ -2,21 +2,15 @@
 #
 # Run with `python3 kooked-kopf.py run -A`
 #
-import argparse
 import kopf
 import kopf.cli
 import logging
 from kubernetes import client, config
 from kubernetes.dynamic import DynamicClient
 from kubernetes.client.exceptions import ApiException
-import base64
 import os
-import subprocess
 import sys
 import yaml
-import re
-from datetime import datetime, timezone
-import time
 
 
 @kopf.on.delete('kooked.ch', 'v1', 'kookeddeployments')
@@ -24,7 +18,7 @@ def on_delete_kookeddeployment(spec, name, namespace, **kwargs):
     KookedDeploymentOperator(name, namespace, spec).delete_kookeddeployment(spec)
 
 @kopf.on.startup()
-def on_kopf_startup (**kwargs):
+def on_kopf_startup(**kwargs):
     KookedDeploymentStartOperator.ensure_crd_exists()
     KookedDeploymentStartOperator.create_cluster_issuer()
     KookedDeploymentStartOperator.ensure_traefik_rbac()
@@ -41,6 +35,7 @@ def on_update_kookeddeployment(spec, name, namespace, **kwargs):
 class classproperty:
     def __init__(self, func):
         self.fget = func
+
     def __get__(self, instance, owner):
         return self.fget(owner)
 
@@ -88,16 +83,16 @@ class KubernetesAPI:
     @classproperty
     def networking(cls):
         return cls.__get()._networking
-    
+
     @classproperty
     def apps(cls):
         return cls.__get()._apps
+
 
 class KookedDeploymentOperator:
     def __init__(self, name, namespace, spec):
         self.name = name
         self.namespace = namespace
-
 
     def create_service(self, container_spec):
         logging.info(f" ↳ [{self.namespace}/{self.name}] Creating service")
@@ -139,14 +134,12 @@ class KookedDeploymentOperator:
             else:
                 logging.error(f"Error creating service: {e}")
 
-
     def create_certificate(self, full_domain):
         parts = full_domain.split('/')
         domain = parts[0]
-        path = '/' + '/'.join(parts[1:]) if len(parts) > 1 else None
 
         logging.info(f" ↳ [{self.namespace}/{self.name}] Creating TLS certificate for {domain}")
-        
+
         certificate = {
             "apiVersion": "cert-manager.io/v1",
             "kind": "Certificate",
@@ -185,7 +178,6 @@ class KookedDeploymentOperator:
             else:
                 logging.error(f"Error creating certificate: {e}")
 
-
     def create_ingress_routes(self, full_domain, port):
         parts = full_domain.split('/')
         domain = parts[0]
@@ -211,7 +203,7 @@ class KookedDeploymentOperator:
                         if 'match' in route_rule and match_rule in route_rule['match']:
                             error_msg = f"Domain {domain}{path if path else ''} is already in use by IngressRoute {route['metadata']['name']} in namespace {self.namespace}"
                             logging.error(f" ↳ [{self.namespace}/{self.name}] {error_msg}")
-                            raise kopf.PermanentError(error_msg)  
+                            raise kopf.PermanentError(error_msg)
         except ApiException as e:
             error_msg = f"Error checking existing IngressRoutes: {e}"
             logging.error(error_msg)
@@ -255,8 +247,7 @@ class KookedDeploymentOperator:
             middlewares_to_create.append(("middlewares", strip_prefix_middleware, "StripPrefix Middleware"))
 
             logging.info(f"   ↳ [{self.namespace}/{self.name}] Creating StripPrefix middleware")
-            
-            # Ajouter le middleware stripPrefix à la liste des middlewares pour les routes
+
             route_middlewares = [{
                 "name": f"{self.name}-strip-prefix",
                 "namespace": self.namespace
@@ -351,7 +342,7 @@ class KookedDeploymentOperator:
             # Create service and ingress for container if it has domains
             if container_spec.get('domains'):
                 self.create_service(container_spec)
-                
+
                 for domain in container_spec['domains']:
                     # Create certificate for HTTPS
                     self.create_certificate(domain['url'])
@@ -396,13 +387,13 @@ class KookedDeploymentOperator:
 
         # Create Deployment
         self.create_deployment(spec)
-    
+
     def update_kookeddeployment(self, spec):
         logging.info(f"[{self.namespace}/{self.name}] Updating KookedDeployment")
 
     def delete_kookeddeployment(self, spec):
         logging.info(f"[{self.namespace}/{self.name}] Deleting KookedDeployment")
-        
+
         try:
             # Delete Deployment
             KubernetesAPI.apps.delete_namespaced_deployment(
@@ -411,7 +402,7 @@ class KookedDeploymentOperator:
             )
 
             logging.info(f" ↳ [{self.namespace}/{self.name}] Deployment deleted successfully")
-            
+
             # Delete Service
             KubernetesAPI.core.delete_namespaced_service(
                 name=self.name,
@@ -419,7 +410,7 @@ class KookedDeploymentOperator:
             )
 
             logging.info(f" ↳ [{self.namespace}/{self.name}] Service deleted successfully")
-            
+
             # Delete Certificate
             KubernetesAPI.custom.delete_namespaced_custom_object(
                 group="cert-manager.io",
@@ -430,7 +421,7 @@ class KookedDeploymentOperator:
             )
 
             logging.info(f" ↳ [{self.namespace}/{self.name}] Certificate deleted successfully")
-            
+
             # Delete IngressRoutes
             for suffix in ['-http', '-https']:
                 KubernetesAPI.custom.delete_namespaced_custom_object(
@@ -442,7 +433,7 @@ class KookedDeploymentOperator:
                 )
 
             logging.info(f" ↳ [{self.namespace}/{self.name}] IngressRoutes deleted successfully")
-            
+
             # Delete Middleware
             KubernetesAPI.custom.delete_namespaced_custom_object(
                 group="traefik.containo.us",
@@ -453,10 +444,11 @@ class KookedDeploymentOperator:
             )
 
             logging.info(f" ↳ [{self.namespace}/{self.name}] Middleware deleted successfully")
-            
+
             logging.info(f" ↳ [{self.namespace}/{self.name}] All resources deleted successfully")
         except ApiException as e:
             logging.error(f"Error deleting resources: {e}")
+
 
 class KookedDeploymentStartOperator:
     @classmethod
@@ -505,11 +497,11 @@ class KookedDeploymentStartOperator:
             logging.error(f"Error verifying CRD file: {e}")
 
         return False
-    
+
     @classmethod
     def create_cluster_issuer(cls):
         logging.info("Creating Let's Encrypt ClusterIssuer")
-        
+
         cluster_issuer = {
             "apiVersion": "cert-manager.io/v1",
             "kind": "ClusterIssuer",
@@ -535,7 +527,7 @@ class KookedDeploymentStartOperator:
                 }
             }
         }
-        
+
         try:
             try:
                 KubernetesAPI.custom.get_cluster_custom_object(
@@ -552,7 +544,7 @@ class KookedDeploymentStartOperator:
                 else:
                     logging.error(f"Error checking for existing ClusterIssuer: {e}")
                     raise e
-            
+
             logging.info("Creating ClusterIssuer 'letsencrypt-prod'...")
             KubernetesAPI.custom.create_cluster_custom_object(
                 group="cert-manager.io",
@@ -561,14 +553,14 @@ class KookedDeploymentStartOperator:
                 body=cluster_issuer
             )
             logging.info("ClusterIssuer 'letsencrypt-prod' created successfully")
-            
+
         except ApiException as e:
             logging.error(f"Error creating ClusterIssuer: {e}")
 
     @classmethod
     def ensure_traefik_rbac(cls):
         logging.info("Setting up Traefik RBAC for cross-namespace IngressRoute access")
-        
+
         cluster_role = {
             "apiVersion": "rbac.authorization.k8s.io/v1",
             "kind": "ClusterRole",
@@ -596,7 +588,7 @@ class KookedDeploymentStartOperator:
                 }
             ]
         }
-        
+
         cluster_role_binding = {
             "apiVersion": "rbac.authorization.k8s.io/v1",
             "kind": "ClusterRoleBinding",
@@ -612,11 +604,11 @@ class KookedDeploymentStartOperator:
                 {
                     "kind": "ServiceAccount",
                     "name": "traefik",
-                    "namespace": "kube-system"  
+                    "namespace": "kube-system"
                 }
             ]
         }
-        
+
         try:
             try:
                 existing_role = KubernetesAPI.custom.get_cluster_custom_object(
@@ -671,13 +663,14 @@ class KookedDeploymentStartOperator:
                     )
                 else:
                     raise e
-            
+
             logging.info("Successfully configured Traefik RBAC for cross-namespace access")
             return True
-            
+
         except ApiException as e:
             logging.error(f"Error configuring Traefik RBAC: {e}")
             return False
+
 
 if __name__ == '__main__':
     sys.exit(kopf.cli.main())
