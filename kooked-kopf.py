@@ -179,7 +179,7 @@ class KookedDeploymentOperator:
                 logging.error(f"Error creating certificate: {e}")
 
     def create_ingress_routes(self, domain, port):
-        logging.info(f" ↳ [{self.namespace}/{self.name}] Creating IngressRoutes for {domain}{path if path else ''}")
+        logging.info(f" ↳ [{self.namespace}/{self.name}] Creating IngressRoutes for {domain}")
 
         match_rule = f"Host(`{domain}`)"
 
