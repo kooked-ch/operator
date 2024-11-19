@@ -122,6 +122,19 @@ class KookedDeploymentOperator:
         except Exception as e:
             logging.error(f"Could not write event: {e}")
 
+    def update_status(self, status):
+        try:
+            KubernetesAPI.custom.patch_namespaced_custom_object_status(
+                group="kooked.ch",
+                version="v1",
+                plural="kookeddeployments",
+                name=self.name,
+                namespace=self.namespace,
+                body={"status": status}
+            )
+        except ApiException as e:
+            logging.error(f"Could not update status: {e}")
+
     def validate_domain_uniqueness(self, domains):
         conflicting_domains = []
         allowed_domains = []
