@@ -338,6 +338,71 @@ class KookedDeploymentOperator:
     def update_kookeddeployment(self, spec):
         logging.info(f"[{self.namespace}/{self.name}] Updating KookedDeployment")
 
+        containers = []
+        domains = []
+        for container_spec in spec.get('containers', []):
+            container = client.V1Container(
+                name=container_spec['name'],
+                image=container_spec['image'],
+                ports=[client.V1ContainerPort(container_port=domain.get('port', 80)) 
+                       for domain in container_spec.get('domains', [])],
+                env=[client.V1EnvVar(name=env['name'], value=env['value'])
+                     for env in container_spec.get('environment', [])]
+            )
+            containers.append(container)
+
+            # Create service and ingress for container if it has domains
+            if container_spec.get('domains'):
+                self.create_service(container_spec)
+                for domain in container_spec['domains']:
+                    domains.append(domain)
+
+        try:
+            existing_routes = KubernetesAPI.custom.list_custom_object(
+                group="traefik.containo.us",
+                version="v1alpha1",
+                plural="ingressroutes"
+            )
+
+            existing_routes_items = existing_routes.get("items", [])
+
+            for domain in domains:
+                domain_url = domain.get('url')
+                if not domain_url:
+                    logging.warning(f" ↳ Domaine sans URL trouvé dans {domain}, passage ignoré.")
+                    continue
+
+                if not any(
+                    route.get("spec", {}).get("routes", [])
+                    for route in existing_routes_items
+                    if any(domain_url in route_rule.get("match", "") for route_rule in route["spec"].get("routes", []))
+                ):
+                    self.create_certificate(domain_url)
+                    self.create_ingress_routes(domain_url, domain.get('port', 80))
+
+        except ApiException as e:
+            error_msg = f"Error checking existing IngressRoutes: {e}"
+            logging.error(error_msg)
+
+        KubernetesAPI.apps.update_namespaced_deployment(
+            name=self.name,
+            namespace=self.namespace,
+            body=client.V1DeploymentSpec(
+                replicas=spec.get('replicas', 1),
+                selector=client.V1LabelSelector(
+                    match_labels={"app": self.name}
+                ),
+                template=client.V1PodTemplateSpec(
+                    metadata=client.V1ObjectMeta(
+                        labels={"app": self.name}
+                    ),
+                    spec=client.V1PodSpec(
+                        containers=containers
+                    )
+                )
+            )
+        )
+
     def delete_kookeddeployment(self, spec):
         logging.info(f"[{self.namespace}/{self.name}] Deleting KookedDeployment")
 
