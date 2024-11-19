@@ -157,48 +157,16 @@ class KookedDeploymentOperator:
             )
             return False
 
+    def expose_containers(self, containers):
+        for container in containers:
+            if container.get('domains') is None:
+                continue
 
-                for container in deployment.get('spec', {}).get('containers', []):
-                    for existing_domain in container.get('domains', []):
-                        for new_domain in domains:
-                            if existing_domain['url'] == new_domain['url']:
-                                conflicting_domains.append(new_domain['url'])
-                            else:
-                                allowed_domains.append(new_domain)
-
-        except ApiException as e:
-            logging.error(f"Error checking domain uniqueness: {e}")
-            # If API call fails, allow all domains
-            return [], domains
-
-        return conflicting_domains, list({d['url']: d for d in allowed_domains}.values())
-
-    def log_domain_conflict_event(self, conflicting_domains):
-        for domain in conflicting_domains:
-            event = {
-                'type': 'Warning',
-                'reason': 'DomainConflict',
-                'message': f"Domain '{domain}' is already in use by another KookedDeployment"
-            }
-            try:
-                KubernetesAPI.core.create_namespaced_event(
-                    namespace=self.namespace,
-                    body={
-                        'metadata': {
-                            'generateName': f"{self.name}-domain-conflict-"
-                        },
-                        'involvedObject': {
-                            'kind': 'KookedDeployment',
-                            'name': self.name,
-                            'namespace': self.namespace
-                        },
-                        'type': event['type'],
-                        'reason': event['reason'],
-                        'message': event['message']
-                    }
-                )
-            except Exception as e:
-                logging.error(f"Could not log domain conflict event: {e}")
+            self.create_service(container)
+            for domain in container.get('domains', []):
+                if self.check_domain(domain['url']):
+                    self.create_certificate(domain['url'])
+                    self.create_ingress_routes(domain['url'])
 
     def create_service(self, container_spec):
         logging.info(f" ↳ [{self.namespace}/{self.name}] Creating service")
