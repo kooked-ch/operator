@@ -168,11 +168,11 @@ class KookedDeploymentOperator:
                     self.create_certificate(domain['url'])
                     self.create_ingress_routes(domain['url'])
 
-    def create_service(self, container_spec):
+    def create_service(self, container):
         logging.info(f" ↳ [{self.namespace}/{self.name}] Creating service")
 
         service_ports = []
-        for domain in container_spec.get('domains', []):
+        for domain in container.get('domains', []):
             service_ports.append(
                 client.V1ServicePort(
                     port=80,
@@ -180,6 +180,12 @@ class KookedDeploymentOperator:
                     protocol="TCP"
                 )
             )
+
+        if not service_ports:
+            logging.info(
+                f" ↳ [{self.namespace}/{self.name}] No service ports to create"
+            )
+            return
 
         service = client.V1Service(
             api_version="v1",
