@@ -255,32 +255,8 @@ class KookedDeploymentOperator:
             else:
                 logging.error(f"Error creating certificate: {e}")
 
-    def create_ingress_routes(self, domain, port):
-        logging.info(f" ↳ [{self.namespace}/{self.name}] Creating IngressRoutes for {domain}")
-
-        match_rule = f"Host(`{domain}`)"
-
-        try:
-            all_deployments = KubernetesAPI.apps.list_cluster_custom_object(
-                group="apps",
-                version="v1",
-                plural="kookedDeployments"
-            )
-
-            for deployment in all_deployments['items']:
-                if deployment['metadata']['name'] == self.name:
-                    continue
-
-                for container in deployment['spec']['containers']:
-                    for domain in container.get('domains', []):
-                        if domain.url == domain:
-                            error_msg = f"Domain {domain} is already in use by another KookedDeployment"
-                            logging.error(f" ↳ [{self.namespace}/{self.name}] {error_msg}")
-                            raise kopf.PermanentError(error_msg)
-
-        except ApiException as e:
-            error_msg = f"Error checking existing IngressRoutes: {e}"
-            logging.error(error_msg)
+    def create_ingress_routes(self, domain):
+        logging.info(f" ↳ [{self.namespace}/{self.name}] Creating IngressRoutes for {domain.url}")
 
         # List to store middleware to create
         middlewares_to_create = []
@@ -296,7 +272,7 @@ class KookedDeploymentOperator:
             "spec": {
                 "entryPoints": ["web"],
                 "routes": [{
-                    "match": match_rule,
+                    "match": f"Host(`{domain}`)",
                     "kind": "Rule",
                     "middlewares": [{
                         "name": f"{domain.replace('.', '-')}-redirect",
