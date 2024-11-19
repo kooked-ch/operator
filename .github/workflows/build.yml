@@ -46,10 +46,7 @@ jobs:
               with:
                   tag_name: ${{ env.version }}
                   release_name: ${{ env.version }}
-                  body: |
-                      Cette release inclut les modifications suivantes :
-                      - Ajout d'une nouvelle fonctionnalité
-                      - Correction de bugs
+                  body: ''
                   draft: false
                   prerelease: false
 
