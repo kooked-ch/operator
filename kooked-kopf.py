@@ -351,9 +351,7 @@ class KookedDeploymentOperator:
             )
             containers.append(container)
 
-            # Create service and ingress for container if it has domains
             if container_spec.get('domains'):
-                self.create_service(container_spec)
                 for domain in container_spec['domains']:
                     domains.append(domain)
 
@@ -376,7 +374,9 @@ class KookedDeploymentOperator:
                     route.get("spec", {}).get("routes", [])
                     for route in existing_routes_items
                     if any(domain_url in route_rule.get("match", "") for route_rule in route["spec"].get("routes", []))
+                    
                 ):
+                    self.create_service(container_spec)
                     self.create_certificate(domain_url)
                     self.create_ingress_routes(domain_url, domain.get('port', 80))
 
