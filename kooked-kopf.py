@@ -384,7 +384,7 @@ class KookedDeploymentOperator:
             error_msg = f"Error checking existing IngressRoutes: {e}"
             logging.error(error_msg)
 
-        KubernetesAPI.apps.update_namespaced_deployment(
+        KubernetesAPI.apps.replace_namespaced_deployment(
             name=self.name,
             namespace=self.namespace,
             body=client.V1DeploymentSpec(
