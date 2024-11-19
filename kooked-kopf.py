@@ -358,7 +358,7 @@ class KookedDeploymentOperator:
                     domains.append(domain)
 
         try:
-            existing_routes = KubernetesAPI.custom.list_custom_object(
+            existing_routes = KubernetesAPI.custom.list_cluster_custom_object(
                 group="traefik.containo.us",
                 version="v1alpha1",
                 plural="ingressroutes"
