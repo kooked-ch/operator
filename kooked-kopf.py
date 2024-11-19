@@ -204,31 +204,12 @@ class KookedDeploymentOperator:
         # List to store middleware to create
         middlewares_to_create = []
 
-        # HTTPS redirection middleware
-        https_redirect_middleware = {
-            "apiVersion": "traefik.containo.us/v1alpha1",
-            "kind": "Middleware",
-            "metadata": {
-                "name": f"{self.name}-redirect",
-                "namespace": self.namespace
-            },
-            "spec": {
-                "redirectScheme": {
-                    "scheme": "https",
-                    "permanent": True
-                }
-            }
-        }
-        middlewares_to_create.append(("middlewares", https_redirect_middleware, "HTTPS Redirect Middleware"))
-
-        logging.info(f"   ↳ [{self.namespace}/{self.name}] Creating HTTPS redirect middleware")
-
         # Create HTTP IngressRoute (for redirect)
         http_route = {
             "apiVersion": "traefik.containo.us/v1alpha1",
             "kind": "IngressRoute",
             "metadata": {
-                "name": f"{self.name}-http",
+                "name": f"{domain.replace('.', '-')}-http",
                 "namespace": self.namespace
             },
             "spec": {
@@ -237,7 +218,7 @@ class KookedDeploymentOperator:
                     "match": match_rule,
                     "kind": "Rule",
                     "middlewares": [{
-                        "name": f"{self.name}-redirect",
+                        "name": f"{domain.replace('.', '-')}-redirect",
                         "namespace": self.namespace
                     }],
                     "services": [{
@@ -253,7 +234,7 @@ class KookedDeploymentOperator:
             "apiVersion": "traefik.containo.us/v1alpha1",
             "kind": "IngressRoute",
             "metadata": {
-                "name": f"{self.name}-https",
+                "name": f"{domain.replace('.', '-')}-https",
                 "namespace": self.namespace
             },
             "spec": {
@@ -267,7 +248,7 @@ class KookedDeploymentOperator:
                     }]
                 }],
                 "tls": {
-                    "secretName": f"{self.name}-tls"
+                    "secretName": f"{domain.replace('.', '-')}-tls"
                 }
             }
         }
