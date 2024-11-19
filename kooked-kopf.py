@@ -331,27 +331,23 @@ class KookedDeploymentOperator:
                 else:
                     logging.error(f"Error creating {resource_type}: {e}")
 
-    def create_deployment(self, spec):
-        logging.info(f" ↳ [{self.namespace}/{self.name}] Creating deployment")
+    def create_kookeddeployment(self, spec):
+        logging.info(f"[{self.namespace}/{self.name}] Creating KookedDeployment")
+
+        self.expose_containers(spec.get('containers', []))
 
         containers = []
+
         for container_spec in spec.get('containers', []):
             container = client.V1Container(
                 name=container_spec['name'],
                 image=container_spec['image'],
-                ports=[client.V1ContainerPort(container_port=domain.get('port', 80)) 
+                ports=[client.V1ContainerPort(container_port=domain.get('port', 80))
                        for domain in container_spec.get('domains', [])],
                 env=[client.V1EnvVar(name=env['name'], value=env['value'])
                      for env in container_spec.get('environment', [])]
             )
             containers.append(container)
-
-            # Create service and ingress for container if it has domains
-            if container_spec.get('domains'):
-                self.create_service(container_spec)
-                for domain in container_spec['domains']:
-                    self.create_certificate(domain['url'])
-                    self.create_ingress_routes(domain['url'], domain.get('port', 80))
 
         deployment = client.V1Deployment(
             api_version="apps/v1",
@@ -385,35 +381,6 @@ class KookedDeploymentOperator:
             logging.info(f" ↳ [{self.namespace}/{self.name}] Deployment created successfully")
         except ApiException as e:
             logging.error(f"Error creating deployment: {e}")
-
-    def create_kookeddeployment(self, spec):
-        logging.info(f"[{self.namespace}/{self.name}] Creating KookedDeployment")
-
-        # Collect all domains across containers
-        all_domains = [
-            domain
-            for container in spec.get('containers', [])
-            for domain in container.get('domains', [])
-        ]
-
-        # Validate domain uniqueness
-        conflicting_domains, allowed_domains = self.validate_domain_uniqueness(all_domains)
-
-        # Log conflicts and prevent processing if domains are already in use
-        if conflicting_domains:
-            self.log_domain_conflict_event(conflicting_domains)
-            logging.warning(f"Skipping deployment due to domain conflicts: {conflicting_domains}")
-            return
-
-        # Update spec with allowed domains
-        for container in spec.get('containers', []):
-            container['domains'] = [
-                domain for domain in container.get('domains', [])
-                if domain in allowed_domains
-            ]
-
-        # Proceed with deployment creation
-        self.create_deployment(spec)
 
     def update_kookeddeployment(self, spec):
         logging.info(f"[{self.namespace}/{self.name}] Updating KookedDeployment")
