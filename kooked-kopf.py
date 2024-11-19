@@ -184,10 +184,9 @@ class KookedDeploymentOperator:
         match_rule = f"Host(`{domain}`)"
 
         try:
-            existing_routes = KubernetesAPI.custom.list_namespaced_custom_object(
+            existing_routes = KubernetesAPI.custom.list_custom_object(
                 group="traefik.containo.us",
                 version="v1alpha1",
-                namespace=self.namespace,
                 plural="ingressroutes"
             )
 
