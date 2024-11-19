@@ -101,6 +101,27 @@ class KookedDeploymentOperator:
         self.name = name
         self.namespace = namespace
 
+    def write_event(self, event):
+        try:
+            KubernetesAPI.core.create_namespaced_event(
+                namespace=self.namespace,
+                body={
+                    'metadata': {
+                        'generateName': f"{self.name}-event-"
+                    },
+                    'involvedObject': {
+                        'kind': 'KookedDeployment',
+                        'name': self.name,
+                        'namespace': self.namespace
+                    },
+                    'type': event['type'],
+                    'reason': event['reason'],
+                    'message': event['message']
+                }
+            )
+        except Exception as e:
+            logging.error(f"Could not write event: {e}")
+
     def validate_domain_uniqueness(self, domains):
         conflicting_domains = []
         allowed_domains = []
