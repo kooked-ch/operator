@@ -31,11 +31,12 @@ jobs:
                   username: ${{ github.actor }}
                   password: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Get version from setup.py
+            # Get version from backend/setup.py
+            - name: Get Version from setup.py
               id: get_version
               run: |
-                  version=$(python -c "from setuptools import setup; print(setup().get_version())")
-                  echo "Version: $version"
+                  version=$(grep 'version=' setup.py | sed -E "s/.*version=['\"]([^'\"]+)['\"].*/\\1/")
+                  echo "version: $version"
                   echo "version=$version" >> $GITHUB_ENV
 
             - name: Check if release exists
