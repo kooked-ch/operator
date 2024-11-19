@@ -385,32 +385,7 @@ class KookedDeploymentOperator:
     def update_kookeddeployment(self, spec):
         logging.info(f"[{self.namespace}/{self.name}] Updating KookedDeployment")
 
-        # Collect all domains across containers
-        all_domains = [
-            domain
-            for container in spec.get('containers', [])
-            for domain in container.get('domains', [])
-        ]
-
-        # Validate domain uniqueness
-        conflicting_domains, allowed_domains = self.validate_domain_uniqueness(all_domains)
-
-        # Log conflicts
-        if conflicting_domains:
-            self.log_domain_conflict_event(conflicting_domains)
-
-        # Update spec with allowed domains
-        for container in spec.get('containers', []):
-            container['domains'] = [
-                domain for domain in container.get('domains', [])
-                if domain in allowed_domains
-            ]
-
-            if container['domains']:
-                self.create_service(container)
-                for domain in container['domains']:
-                    self.create_certificate(domain['url'])
-                    self.create_ingress_routes(domain['url'], domain.get('port', 80))
+        self.expose_containers(spec.get('containers', []))
 
         containers = []
         for container_spec in spec.get('containers', []):
@@ -423,7 +398,7 @@ class KookedDeploymentOperator:
                      for env in container_spec.get('environment', [])]
             )
             containers.append(container)
-            
+
         KubernetesAPI.apps.replace_namespaced_deployment(
             name=self.name,
             namespace=self.namespace,
