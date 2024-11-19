@@ -96,32 +96,9 @@ spec:
                 - containers
                 - user
             status:
-              type: object
+              type: string
               description: Status defines the observed state of the KookedDeployment.
               x-kubernetes-preserve-unknown-fields: true
-              properties:
-                phase:
-                  type: string
-                  description: Current phase of the deployment.
-                history:
-                  type: array
-                  description: History of the KookedDeployment.
-                  items:
-                    type: object
-                    description: History entry for the deployment.
-                    properties:
-                      timestamp:
-                        type: string
-                        description: Timestamp of the history entry.
-                      action:
-                        type: string
-                        description: Action performed on the deployment.
-                      user:
-                        type: string
-                        description: User who performed the action.
-                      message:
-                        type: string
-                        description: Message associated with the action.
       additionalPrinterColumns:
         - name: Project
           type: string
