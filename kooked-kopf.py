@@ -58,7 +58,8 @@ class KubernetesAPI:
 
     def __init__(self):
 
-        if os.path.exists('/var/run/secrets/kubernetes.io/serviceaccount/token'):
+        token_path = '/var/run/secrets/kubernetes.io/serviceaccount/token'
+        if os.path.exists(token_path):
             config.load_incluster_config()
         else:
             config.load_kube_config()
