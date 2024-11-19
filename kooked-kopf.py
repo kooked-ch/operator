@@ -1,6 +1,7 @@
 # Kopf documentation : https://kopf.readthedocs.io/
 #
 # Run with `python3 kooked-kopf.py run -A`
+
 #
 import kopf
 import kopf.cli
@@ -58,8 +59,7 @@ class KubernetesAPI:
 
     def __init__(self):
 
-        token_path = '/var/run/secrets/kubernetes.io/serviceaccount/token'
-        if os.path.exists(token_path):
+        if os.path.exists('/var/run/secrets/kubernetes.io/serviceaccount/token'):
             config.load_incluster_config()
         else:
             config.load_kube_config()
@@ -101,78 +101,11 @@ class KookedDeploymentOperator:
         self.name = name
         self.namespace = namespace
 
-    def write_event(self, event):
-        try:
-            KubernetesAPI.core.create_namespaced_event(
-                namespace=self.namespace,
-                body={
-                    'metadata': {
-                        'generateName': f"{self.name}-event-"
-                    },
-                    'involvedObject': {
-                        'kind': 'KookedDeployment',
-                        'name': self.name,
-                        'namespace': self.namespace
-                    },
-                    'type': event['type'],
-                    'reason': event['reason'],
-                    'message': event['message']
-                }
-            )
-        except Exception as e:
-            logging.error(f"Could not write event: {e}")
-
-    def update_status(self, status):
-        try:
-            KubernetesAPI.custom.patch_namespaced_custom_object_status(
-                group="kooked.ch",
-                version="v1",
-                plural="kookeddeployments",
-                name=self.name,
-                namespace=self.namespace,
-                body={"status": status}
-            )
-        except ApiException as e:
-            logging.error(f"Could not update status: {e}")
-
-    def check_domain(self, domain):
-        all_deployments = KubernetesAPI.custom.list_cluster_custom_object(
-            group="kooked.ch",
-            version="v1",
-            plural="kookeddeployments"
-        )['items']
-
-        domains = []
-
-        for deployment in all_deployments:
-            if deployment['metadata']['name'] == self.name:
-                continue
-            for container in deployment.get('containers', []):
-                for domain in container.get('domains', []):
-                    domains.append(domain['url'])
-
-        if domain in domains:
-            logging.error(
-                f" ↳ [{self.namespace}/{self.name}] Domain '{domain}' is already in use by another KookedDeployment"
-            )
-            return False
-
-    def expose_containers(self, containers):
-        for container in containers:
-            if container.get('domains') is None:
-                continue
-
-            self.create_service(container)
-            for domain in container.get('domains', []):
-                if self.check_domain(domain['url']):
-                    self.create_certificate(domain['url'])
-                    self.create_ingress_routes(domain['url'])
-
-    def create_service(self, container):
+    def create_service(self, container_spec):
         logging.info(f" ↳ [{self.namespace}/{self.name}] Creating service")
 
         service_ports = []
-        for domain in container.get('domains', []):
+        for domain in container_spec.get('domains', []):
             service_ports.append(
                 client.V1ServicePort(
                     port=80,
@@ -180,12 +113,6 @@ class KookedDeploymentOperator:
                     protocol="TCP"
                 )
             )
-
-        if not service_ports:
-            logging.info(
-                f" ↳ [{self.namespace}/{self.name}] No service ports to create"
-            )
-            return
 
         service = client.V1Service(
             api_version="v1",
@@ -255,27 +182,66 @@ class KookedDeploymentOperator:
             else:
                 logging.error(f"Error creating certificate: {e}")
 
-    def create_ingress_routes(self, domain):
-        logging.info(f" ↳ [{self.namespace}/{self.name}] Creating IngressRoutes for {domain.url}")
+    def create_ingress_routes(self, domain, port):
+        logging.info(f" ↳ [{self.namespace}/{self.name}] Creating IngressRoutes for {domain}")
+
+        match_rule = f"Host(`{domain}`)"
+
+        try:
+            existing_routes = KubernetesAPI.custom.list_cluster_custom_object(
+                group="traefik.containo.us",
+                version="v1alpha1",
+                plural="ingressroutes"
+            )
+
+            for route in existing_routes['items']:
+                if 'routes' in route['spec']:
+                    for route_rule in route['spec']['routes']:
+                        if 'match' in route_rule and match_rule in route_rule['match']:
+                            error_msg = f"Domain {domain} is already in use by IngressRoute {route['metadata']['name']}"
+                            logging.error(f" ↳ [{self.namespace}/{self.name}] {error_msg}")
+                            raise kopf.PermanentError(error_msg)
+        except ApiException as e:
+            error_msg = f"Error checking existing IngressRoutes: {e}"
+            logging.error(error_msg)
 
         # List to store middleware to create
         middlewares_to_create = []
+
+        # HTTPS redirection middleware
+        https_redirect_middleware = {
+            "apiVersion": "traefik.containo.us/v1alpha1",
+            "kind": "Middleware",
+            "metadata": {
+                "name": f"{self.name}-redirect",
+                "namespace": self.namespace
+            },
+            "spec": {
+                "redirectScheme": {
+                    "scheme": "https",
+                    "permanent": True
+                }
+            }
+        }
+        middlewares_to_create.append(("middlewares", https_redirect_middleware, "HTTPS Redirect Middleware"))
+
+        logging.info(f"   ↳ [{self.namespace}/{self.name}] Creating HTTPS redirect middleware")
 
         # Create HTTP IngressRoute (for redirect)
         http_route = {
             "apiVersion": "traefik.containo.us/v1alpha1",
             "kind": "IngressRoute",
             "metadata": {
-                "name": f"{domain.replace('.', '-')}-http",
+                "name": f"{self.name}-http",
                 "namespace": self.namespace
             },
             "spec": {
                 "entryPoints": ["web"],
                 "routes": [{
-                    "match": f"Host(`{domain}`)",
+                    "match": match_rule,
                     "kind": "Rule",
                     "middlewares": [{
-                        "name": f"{domain.replace('.', '-')}-redirect",
+                        "name": f"{self.name}-redirect",
                         "namespace": self.namespace
                     }],
                     "services": [{
@@ -291,7 +257,7 @@ class KookedDeploymentOperator:
             "apiVersion": "traefik.containo.us/v1alpha1",
             "kind": "IngressRoute",
             "metadata": {
-                "name": f"{domain.replace('.', '-')}-https",
+                "name": f"{self.name}-https",
                 "namespace": self.namespace
             },
             "spec": {
@@ -305,7 +271,7 @@ class KookedDeploymentOperator:
                     }]
                 }],
                 "tls": {
-                    "secretName": f"{domain.replace('.', '-')}-tls"
+                    "secretName": f"{self.name}-tls"
                 }
             }
         }
@@ -331,23 +297,27 @@ class KookedDeploymentOperator:
                 else:
                     logging.error(f"Error creating {resource_type}: {e}")
 
-    def create_kookeddeployment(self, spec):
-        logging.info(f"[{self.namespace}/{self.name}] Creating KookedDeployment")
-
-        self.expose_containers(spec.get('containers', []))
+    def create_deployment(self, spec):
+        logging.info(f" ↳ [{self.namespace}/{self.name}] Creating deployment")
 
         containers = []
-
         for container_spec in spec.get('containers', []):
             container = client.V1Container(
                 name=container_spec['name'],
                 image=container_spec['image'],
-                ports=[client.V1ContainerPort(container_port=domain.get('port', 80))
+                ports=[client.V1ContainerPort(container_port=domain.get('port', 80)) 
                        for domain in container_spec.get('domains', [])],
                 env=[client.V1EnvVar(name=env['name'], value=env['value'])
                      for env in container_spec.get('environment', [])]
             )
             containers.append(container)
+
+            # Create service and ingress for container if it has domains
+            if container_spec.get('domains'):
+                self.create_service(container_spec)
+                for domain in container_spec['domains']:
+                    self.create_certificate(domain['url'])
+                    self.create_ingress_routes(domain['url'], domain.get('port', 80))
 
         deployment = client.V1Deployment(
             api_version="apps/v1",
@@ -382,41 +352,14 @@ class KookedDeploymentOperator:
         except ApiException as e:
             logging.error(f"Error creating deployment: {e}")
 
+    def create_kookeddeployment(self, spec):
+        logging.info(f"[{self.namespace}/{self.name}] Creating KookedDeployment")
+
+        # Create Deployment
+        self.create_deployment(spec)
+
     def update_kookeddeployment(self, spec):
         logging.info(f"[{self.namespace}/{self.name}] Updating KookedDeployment")
-
-        self.expose_containers(spec.get('containers', []))
-
-        containers = []
-        for container_spec in spec.get('containers', []):
-            container = client.V1Container(
-                name=container_spec['name'],
-                image=container_spec['image'],
-                ports=[client.V1ContainerPort(container_port=domain.get('port', 80))
-                       for domain in container_spec.get('domains', [])],
-                env=[client.V1EnvVar(name=env['name'], value=env['value'])
-                     for env in container_spec.get('environment', [])]
-            )
-            containers.append(container)
-
-        KubernetesAPI.apps.replace_namespaced_deployment(
-            name=self.name,
-            namespace=self.namespace,
-            body=client.V1DeploymentSpec(
-                replicas=spec.get('replicas', 1),
-                selector=client.V1LabelSelector(
-                    match_labels={"app": self.name}
-                ),
-                template=client.V1PodTemplateSpec(
-                    metadata=client.V1ObjectMeta(
-                        labels={"app": self.name}
-                    ),
-                    spec=client.V1PodSpec(
-                        containers=containers
-                    )
-                )
-            )
-        )
 
     def delete_kookeddeployment(self, spec):
         logging.info(f"[{self.namespace}/{self.name}] Deleting KookedDeployment")
@@ -438,52 +381,39 @@ class KookedDeploymentOperator:
 
             logging.info(f" ↳ [{self.namespace}/{self.name}] Service deleted successfully")
 
-            # Delete Certificates
-            for container in spec.get('containers', []):
-                for domain in container.get('domains', []):
-                    KubernetesAPI.custom.delete_namespaced_custom_object(
-                        group="cert-manager.io",
-                        version="v1",
-                        plural="certificates",
-                        name=domain['url'].replace('.', '-'),
-                        namespace=self.namespace
-                    )
+            # Delete Certificate
+            KubernetesAPI.custom.delete_namespaced_custom_object(
+                group="cert-manager.io",
+                version="v1",
+                namespace=self.namespace,
+                plural="certificates",
+                name=self.name
+            )
 
-                    logging.info(f" ↳ [{self.namespace}/{self.name}] Certificate deleted successfully")
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Certificate deleted successfully")
 
             # Delete IngressRoutes
-            for container in spec.get('containers', []):
-                for domain in container.get('domains', []):
-                    KubernetesAPI.custom.delete_namespaced_custom_object(
-                        group="traefik.containo.us",
-                        version="v1alpha1",
-                        plural="ingressroutes",
-                        name=f"{domain['url'].replace('.', '-')}-http",
-                        namespace=self.namespace
-                    )
+            for suffix in ['-http', '-https']:
+                KubernetesAPI.custom.delete_namespaced_custom_object(
+                    group="traefik.containo.us",
+                    version="v1alpha1",
+                    namespace=self.namespace,
+                    plural="ingressroutes",
+                    name=f"{self.name}{suffix}"
+                )
 
-                    KubernetesAPI.custom.delete_namespaced_custom_object(
-                        group="traefik.containo.us",
-                        version="v1alpha1",
-                        plural="ingressroutes",
-                        name=f"{domain['url'].replace('.', '-')}-https",
-                        namespace=self.namespace
-                    )
+            logging.info(f" ↳ [{self.namespace}/{self.name}] IngressRoutes deleted successfully")
 
-                    logging.info(f" ↳ [{self.namespace}/{self.name}] IngressRoutes deleted successfully")   
+            # Delete Middleware
+            KubernetesAPI.custom.delete_namespaced_custom_object(
+                group="traefik.containo.us",
+                version="v1alpha1",
+                namespace=self.namespace,
+                plural="middlewares",
+                name=f"{self.name}-redirect"
+            )
 
-            # Delete Middlewares
-            for container in spec.get('containers', []):
-                for domain in container.get('domains', []):
-                    KubernetesAPI.custom.delete_namespaced_custom_object(
-                        group="traefik.containo.us",
-                        version="v1alpha1",
-                        plural="middlewares",
-                        name=f"{domain['url'].replace('.', '-')}-redirect",
-                        namespace=self.namespace
-                    )
-
-                    logging.info(f" ↳ [{self.namespace}/{self.name}] Middleware deleted successfully")
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Middleware deleted successfully")
 
             logging.info(f" ↳ [{self.namespace}/{self.name}] All resources deleted successfully")
         except ApiException as e:
