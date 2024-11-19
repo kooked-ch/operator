@@ -13,11 +13,6 @@ import sys
 import yaml
 
 
-@kopf.on.delete('kooked.ch', 'v1', 'kookeddeployments')
-def on_delete_kookeddeployment(spec, name, namespace, **kwargs):
-    KookedDeploymentOperator(name, namespace, spec).delete_kookeddeployment(spec)
-
-
 @kopf.on.startup()
 def on_kopf_startup(**kwargs):
     KookedDeploymentStartOperator.ensure_crd_exists()
@@ -27,12 +22,20 @@ def on_kopf_startup(**kwargs):
 
 @kopf.on.create('kooked.ch', 'v1', 'kookeddeployments')
 def on_create_kookeddeployment(spec, name, namespace, **kwargs):
-    KookedDeploymentOperator(name, namespace, spec).create_kookeddeployment(spec)
+    operator = KookedDeploymentOperator(name, namespace, spec)
+    operator.create_kookeddeployment(spec)
 
 
 @kopf.on.update('kooked.ch', 'v1', 'kookeddeployments')
 def on_update_kookeddeployment(spec, name, namespace, **kwargs):
-    KookedDeploymentOperator(name, namespace, spec).update_kookeddeployment(spec)
+    operator = KookedDeploymentOperator(name, namespace, spec)
+    operator.update_kookeddeployment(spec)
+
+
+@kopf.on.delete('kooked.ch', 'v1', 'kookeddeployments')
+def on_delete_kookeddeployment(spec, name, namespace, **kwargs):
+    operator = KookedDeploymentOperator(name, namespace, spec)
+    operator.delete_kookeddeployment(spec)
 
 
 class classproperty:
