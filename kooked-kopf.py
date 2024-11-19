@@ -144,7 +144,7 @@ class KookedDeploymentOperator:
             "apiVersion": "cert-manager.io/v1",
             "kind": "Certificate",
             "metadata": {
-                "name": self.name,
+                "name": domain.replace('.', '-'),
                 "namespace": self.namespace
             },
             "spec": {
@@ -153,7 +153,7 @@ class KookedDeploymentOperator:
                     "name": "letsencrypt-prod",
                     "kind": "ClusterIssuer"
                 },
-                "secretName": f"{self.name}-tls",
+                "secretName": f"{domain.replace('.', '-')}-tls",
                 "duration": "2160h",
                 "renewBefore": "360h",
                 "privateKey": {
