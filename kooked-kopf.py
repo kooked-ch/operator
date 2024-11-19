@@ -135,20 +135,28 @@ class KookedDeploymentOperator:
         except ApiException as e:
             logging.error(f"Could not update status: {e}")
 
-    def validate_domain_uniqueness(self, domains):
-        conflicting_domains = []
-        allowed_domains = []
+    def check_domain(self, domain):
+        all_deployments = KubernetesAPI.custom.list_cluster_custom_object(
+            group="kooked.ch",
+            version="v1",
+            plural="kookeddeployments"
+        )['items']
 
-        try:
-            all_deployments = KubernetesAPI.custom.list_cluster_custom_object(
-                group="kooked.ch",
-                version="v1",
-                plural="kookeddeployments"
+        domains = []
+
+        for deployment in all_deployments:
+            if deployment['metadata']['name'] == self.name:
+                continue
+            for container in deployment.get('containers', []):
+                for domain in container.get('domains', []):
+                    domains.append(domain['url'])
+
+        if domain in domains:
+            logging.error(
+                f" ↳ [{self.namespace}/{self.name}] Domain '{domain}' is already in use by another KookedDeployment"
             )
+            return False
 
-            for deployment in all_deployments.get('items', []):
-                if deployment['metadata']['name'] == self.name:
-                    continue
 
                 for container in deployment.get('spec', {}).get('containers', []):
                     for existing_domain in container.get('domains', []):
