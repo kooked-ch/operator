@@ -97,6 +97,63 @@ class KookedDeploymentOperator:
         self.name = name
         self.namespace = namespace
 
+    def validate_domain_uniqueness(self, domains):
+        conflicting_domains = []
+        allowed_domains = []
+
+        try:
+            all_deployments = KubernetesAPI.custom.list_cluster_custom_object(
+                group="kooked.ch",
+                version="v1",
+                plural="kookeddeployments"
+            )
+
+            for deployment in all_deployments.get('items', []):
+                if deployment['metadata']['name'] == self.name:
+                    continue
+
+                for container in deployment.get('spec', {}).get('containers', []):
+                    for existing_domain in container.get('domains', []):
+                        for new_domain in domains:
+                            if existing_domain['url'] == new_domain['url']:
+                                conflicting_domains.append(new_domain['url'])
+                            else:
+                                allowed_domains.append(new_domain)
+
+        except ApiException as e:
+            logging.error(f"Error checking domain uniqueness: {e}")
+            # If API call fails, allow all domains
+            return [], domains
+
+        return conflicting_domains, list({d['url']: d for d in allowed_domains}.values())
+
+    def log_domain_conflict_event(self, conflicting_domains):
+        for domain in conflicting_domains:
+            event = {
+                'type': 'Warning',
+                'reason': 'DomainConflict',
+                'message': f"Domain '{domain}' is already in use by another KookedDeployment"
+            }
+            try:
+                KubernetesAPI.core.create_namespaced_event(
+                    namespace=self.namespace,
+                    body={
+                        'metadata': {
+                            'generateName': f"{self.name}-domain-conflict-"
+                        },
+                        'involvedObject': {
+                            'kind': 'KookedDeployment',
+                            'name': self.name,
+                            'namespace': self.namespace
+                        },
+                        'type': event['type'],
+                        'reason': event['reason'],
+                        'message': event['message']
+                    }
+                )
+            except Exception as e:
+                logging.error(f"Could not log domain conflict event: {e}")
+
     def create_service(self, container_spec):
         logging.info(f" ↳ [{self.namespace}/{self.name}] Creating service")
 
@@ -184,19 +241,23 @@ class KookedDeploymentOperator:
         match_rule = f"Host(`{domain}`)"
 
         try:
-            existing_routes = KubernetesAPI.custom.list_cluster_custom_object(
-                group="traefik.containo.us",
-                version="v1alpha1",
-                plural="ingressroutes"
+            all_deployments = KubernetesAPI.apps.list_cluster_custom_object(
+                group="apps",
+                version="v1",
+                plural="kookedDeployments"
             )
 
-            for route in existing_routes['items']:
-                if 'routes' in route['spec']:
-                    for route_rule in route['spec']['routes']:
-                        if 'match' in route_rule and match_rule in route_rule['match']:
-                            error_msg = f"Domain {domain} is already in use by IngressRoute {route['metadata']['name']}"
+            for deployment in all_deployments['items']:
+                if deployment['metadata']['name'] == self.name:
+                    continue
+
+                for container in deployment['spec']['containers']:
+                    for domain in container.get('domains', []):
+                        if domain.url == domain:
+                            error_msg = f"Domain {domain} is already in use by another KookedDeployment"
                             logging.error(f" ↳ [{self.namespace}/{self.name}] {error_msg}")
                             raise kopf.PermanentError(error_msg)
+
         except ApiException as e:
             error_msg = f"Error checking existing IngressRoutes: {e}"
             logging.error(error_msg)
@@ -332,58 +393,74 @@ class KookedDeploymentOperator:
     def create_kookeddeployment(self, spec):
         logging.info(f"[{self.namespace}/{self.name}] Creating KookedDeployment")
 
-        # Create Deployment
+        # Collect all domains across containers
+        all_domains = [
+            domain
+            for container in spec.get('containers', [])
+            for domain in container.get('domains', [])
+        ]
+
+        # Validate domain uniqueness
+        conflicting_domains, allowed_domains = self.validate_domain_uniqueness(all_domains)
+
+        # Log conflicts and prevent processing if domains are already in use
+        if conflicting_domains:
+            self.log_domain_conflict_event(conflicting_domains)
+            logging.warning(f"Skipping deployment due to domain conflicts: {conflicting_domains}")
+            return
+
+        # Update spec with allowed domains
+        for container in spec.get('containers', []):
+            container['domains'] = [
+                domain for domain in container.get('domains', [])
+                if domain in allowed_domains
+            ]
+
+        # Proceed with deployment creation
         self.create_deployment(spec)
 
     def update_kookeddeployment(self, spec):
         logging.info(f"[{self.namespace}/{self.name}] Updating KookedDeployment")
 
+        # Collect all domains across containers
+        all_domains = [
+            domain
+            for container in spec.get('containers', [])
+            for domain in container.get('domains', [])
+        ]
+
+        # Validate domain uniqueness
+        conflicting_domains, allowed_domains = self.validate_domain_uniqueness(all_domains)
+
+        # Log conflicts
+        if conflicting_domains:
+            self.log_domain_conflict_event(conflicting_domains)
+
+        # Update spec with allowed domains
+        for container in spec.get('containers', []):
+            container['domains'] = [
+                domain for domain in container.get('domains', [])
+                if domain in allowed_domains
+            ]
+
+            if container['domains']:
+                self.create_service(container)
+                for domain in container['domains']:
+                    self.create_certificate(domain['url'])
+                    self.create_ingress_routes(domain['url'], domain.get('port', 80))
+
         containers = []
-        domains = []
         for container_spec in spec.get('containers', []):
             container = client.V1Container(
                 name=container_spec['name'],
                 image=container_spec['image'],
-                ports=[client.V1ContainerPort(container_port=domain.get('port', 80)) 
+                ports=[client.V1ContainerPort(container_port=domain.get('port', 80))
                        for domain in container_spec.get('domains', [])],
                 env=[client.V1EnvVar(name=env['name'], value=env['value'])
                      for env in container_spec.get('environment', [])]
             )
             containers.append(container)
-
-            if container_spec.get('domains'):
-                for domain in container_spec['domains']:
-                    domains.append(domain)
-
-        try:
-            existing_routes = KubernetesAPI.custom.list_cluster_custom_object(
-                group="traefik.containo.us",
-                version="v1alpha1",
-                plural="ingressroutes"
-            )
-
-            existing_routes_items = existing_routes.get("items", [])
-
-            for domain in domains:
-                domain_url = domain.get('url')
-                if not domain_url:
-                    logging.warning(f" ↳ Domaine sans URL trouvé dans {domain}, passage ignoré.")
-                    continue
-
-                if not any(
-                    route.get("spec", {}).get("routes", [])
-                    for route in existing_routes_items
-                    if any(domain_url in route_rule.get("match", "") for route_rule in route["spec"].get("routes", []))
-                    
-                ):
-                    self.create_service(container_spec)
-                    self.create_certificate(domain_url)
-                    self.create_ingress_routes(domain_url, domain.get('port', 80))
-
-        except ApiException as e:
-            error_msg = f"Error checking existing IngressRoutes: {e}"
-            logging.error(error_msg)
-
+            
         KubernetesAPI.apps.replace_namespaced_deployment(
             name=self.name,
             namespace=self.namespace,
