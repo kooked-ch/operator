@@ -416,7 +416,7 @@ class Domains:
                 logging.error(f"Error creating HTTPS IngressRoute: {e}")
 
     @staticmethod
-    def delete_domain_resources(namespace, name, domain):
+    def delete_domain(namespace, name, domain):
         """
         Delete domain-related resources.
 
