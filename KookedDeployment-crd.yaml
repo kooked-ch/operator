@@ -1,17 +1,15 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: kookeddeployments.kooked.ch
+  name: kookedapps.kooked.ch
 spec:
   group: kooked.ch
   names:
-    kind: KookedDeployment
-    listKind: KookedDeploymentList
-    plural: kookeddeployments
-    singular: kookeddeployment
+    plural: kookedapps
+    singular: kookedapp
+    kind: KookedApp
     shortNames:
-      - kd
-      - kdeploy
+      - kapp
   scope: Namespaced
   versions:
     - name: v1
@@ -19,117 +17,100 @@ spec:
       storage: true
       schema:
         openAPIV3Schema:
-          description: Schema for the KookedDeployment API
           type: object
           properties:
-            apiVersion:
-              type: string
-              description: API version of the KookedDeployment object.
-            kind:
-              type: string
-              description: Kind of the object, always "KookedDeployment".
-            metadata:
-              type: object
             spec:
               type: object
-              description: Desired state of the KookedDeployment
-              x-kubernetes-preserve-unknown-fields: true
               properties:
-                project:
-                  type: string
-                  description: Project associated with the deployment.
-                user:
-                  type: string
-                  description: User who created the deployment.
                 replicas:
                   type: integer
-                  description: Number of replicas for the deployment.
-                  default: 1
                 containers:
                   type: array
-                  description: List of containers for the deployment.
                   items:
                     type: object
-                    description: Container specification for the deployment.
                     properties:
                       name:
                         type: string
-                        description: Name of the container.
                       image:
                         type: string
-                        description: Docker image for the container.
-                      environment:
+                      env:
                         type: array
-                        description: Environment variables for the container.
                         items:
                           type: object
                           properties:
                             name:
                               type: string
-                              description: Name of the environment variable.
                             value:
                               type: string
-                              description: Value of the environment variable.
-                      domains:
+                      volumes:
                         type: array
-                        description: Domains associated with the container.
                         items:
                           type: object
                           properties:
-                            url:
+                            name:
                               type: string
-                              description: URL of the domain.
-                            port:
-                              type: integer
-                              description: Port for the domain.
+                            mountPath:
+                              type: string
                 databases:
                   type: array
-                  description: List of databases for the deployment.
                   items:
                     type: object
-                    description: Database configuration for the deployment.
                     properties:
                       name:
                         type: string
-                        description: Name of the database.
-              required:
-                - containers
-                - user
-            status:
-              type: string
-              description: Status defines the observed state of the KookedDeployment.
-              x-kubernetes-preserve-unknown-fields: true
-      additionalPrinterColumns:
-        - name: Project
-          type: string
-          description: Project associated with the deployment.
-          jsonPath: .metadata.namespace
-        - name: Replicas
-          type: integer
-          description: Number of replicas for the deployment.
-          jsonPath: .spec.replicas
-        - name: Age
-          type: date
-          description: Time since the deployment was created.
-          jsonPath: .metadata.creationTimestamp
-        - name: Status
-          type: string
-          description: Status phase of the deployment.
-          jsonPath: .status.phase
-        - name: Containers
-          type: string
-          description: Containers associated with the deployment.
-          jsonPath: .spec.containers[*].name
-          priority: 1
-        - name: Domains
-          type: string
-          description: Domains associated with the deployment.
-          jsonPath: .spec.containers[*].domains[*].url
-          priority: 1
-        - name: Databases
-          type: string
-          description: Databases associated with the deployment.
-          jsonPath: .spec.databases[*].name
-          priority: 1
-      subresources:
-        status: {}
+                      version:
+                        type: string
+                      settings:
+                        type: object
+                        properties:
+                          user:
+                            type: string
+                          password:
+                            type: string
+                          db:
+                            type: string
+                domains:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                      container:
+                        type: string
+                      port:
+                        type: integer
+  additionalPrinterColumns:
+    - name: Project
+      type: string
+      description: Project associated with the deployment.
+      jsonPath: .metadata.namespace
+    - name: Replicas
+      type: integer
+      description: Number of replicas for the deployment.
+      jsonPath: .spec.replicas
+    - name: Age
+      type: date
+      description: Time since the deployment was created.
+      jsonPath: .metadata.creationTimestamp
+    - name: Status
+      type: string
+      description: Status phase of the deployment.
+      jsonPath: .status.phase
+    - name: Containers
+      type: string
+      description: Containers associated with the deployment.
+      jsonPath: .spec.containers[*].name
+      priority: 1
+    - name: Domains
+      type: string
+      description: Domains associated with the deployment.
+      jsonPath: .spec.containers[*].domains[*].url
+      priority: 1
+    - name: Databases
+      type: string
+      description: Databases associated with the deployment.
+      jsonPath: .spec.databases[*].name
+      priority: 1
+  subresources:
+    status: {}
