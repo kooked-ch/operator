@@ -2,7 +2,6 @@
 #
 # Run with `python3 kooked-kopf.py run -A`
 
-#
 import kopf
 import kopf.cli
 import logging
@@ -21,19 +20,19 @@ def on_kopf_startup(**kwargs):
     KookedDeploymentStartOperator.ensure_traefik_rbac()
 
 
-@kopf.on.create('kooked.ch', 'v1', 'kookeddeployments')
+@kopf.on.create('kooked.ch', 'v1', 'kookedapps')
 def on_create_kookeddeployment(spec, name, namespace, **kwargs):
     operator = KookedDeploymentOperator(name, namespace, spec)
     operator.create_kookeddeployment(spec)
 
 
-@kopf.on.update('kooked.ch', 'v1', 'kookeddeployments')
+@kopf.on.update('kooked.ch', 'v1', 'kookedapps')
 def on_update_kookeddeployment(spec, name, namespace, **kwargs):
     operator = KookedDeploymentOperator(name, namespace, spec)
     operator.update_kookeddeployment(spec)
 
 
-@kopf.on.delete('kooked.ch', 'v1', 'kookeddeployments')
+@kopf.on.delete('kooked.ch', 'v1', 'kookedapps')
 def on_delete_kookeddeployment(spec, name, namespace, **kwargs):
     operator = KookedDeploymentOperator(name, namespace, spec)
     operator.delete_kookeddeployment(spec)
@@ -425,7 +424,7 @@ class KookedDeploymentStartOperator:
     def ensure_crd_exists(cls):
         dyn_client = KubernetesAPI.dynamic
         api_extensions_instance = KubernetesAPI.extensions
-        crd_name = "kookeddeployments.kooked.ch"
+        crd_name = "kookedapps.kooked.ch"
 
         try:
             crd_list = api_extensions_instance.list_custom_resource_definition()
