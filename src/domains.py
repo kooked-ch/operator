@@ -141,20 +141,20 @@ class Domains:
             raise
 
     @staticmethod
-    def create_certificate(namespace, domain, name):
+    def create_certificate(namespace, domain, domain_name):
         """
         Create a certificate for the domain.
 
         Args:
             namespace (str): Kubernetes namespace
             domain (dict): Domain configuration
-            name (str): Certificate name
+            domain_name (str): Sanitized domain name
         """
         certificate = {
             "apiVersion": "cert-manager.io/v1",
             "kind": "Certificate",
             "metadata": {
-                "name": name,
+                "name": domain_name,
                 "namespace": namespace
             },
             "spec": {
@@ -163,7 +163,7 @@ class Domains:
                     "name": "letsencrypt-prod",
                     "kind": "ClusterIssuer"
                 },
-                "secretName": f"{name}-tls",
+                "secretName": f"{domain_name}-tls",
                 "duration": "2160h",
                 "renewBefore": "360h",
                 "privateKey": {
