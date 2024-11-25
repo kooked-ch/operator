@@ -121,11 +121,11 @@ class Domains:
 
             # Create domain resources with better error tracking
             resources_created = [
-                Domains.create_certificate(namespace, domain, domain_name),
+                Domains.create_certificate(namespace, name, domain, domain_name),
                 Domains.create_service(namespace, name, service_name, domain),
-                Domains.create_https_middleware(namespace, domain_name),
-                Domains.create_http_ingress(namespace, service_name, domain_name, domain),
-                Domains.create_https_ingress(namespace, service_name, domain_name, domain)
+                Domains.create_https_middleware(namespace, name, domain_name),
+                Domains.create_http_ingress(namespace, name, service_name, domain_name, domain),
+                Domains.create_https_ingress(namespace, name, service_name, domain_name, domain)
             ]
 
             # Check if all resources were created successfully
@@ -141,12 +141,13 @@ class Domains:
             raise
 
     @staticmethod
-    def create_certificate(namespace, domain, domain_name):
+    def create_certificate(namespace, name, domain, domain_name):
         """
         Create a certificate for the domain.
 
         Args:
             namespace (str): Kubernetes namespace
+            name (str): Resource name
             domain (dict): Domain configuration
             domain_name (str): Sanitized domain name
         """
@@ -270,19 +271,20 @@ class Domains:
             logging.error(f"Error creating service: {e}")
 
     @staticmethod
-    def create_https_middleware(namespace, name):
+    def create_https_middleware(namespace, name, domain_name):
         """
         Create HTTPS redirection middleware.
 
         Args:
             namespace (str): Kubernetes namespace
-            name (str): Middleware name
+            name (str): Resource name
+            domain_name (str): Sanitized domain name
         """
         middleware = {
             "apiVersion": "traefik.containo.us/v1alpha1",
             "kind": "Middleware",
             "metadata": {
-                "name": f"{name}-redirect",
+                "name": f"{domain_name}-redirect",
                 "namespace": namespace
             },
             "spec": {
@@ -309,12 +311,14 @@ class Domains:
                 logging.error(f"Error creating middleware: {e}")
 
     @staticmethod
-    def create_http_ingress(namespace, service_name, domain_name, domain):
+    def create_http_ingress(namespace, name, service_name, domain_name, domain):
         """
         Create HTTP IngressRoute for domain redirection.
 
         Args:
             namespace (str): Kubernetes namespace
+            name (str): Resource name
+            service_name (str): Service name
             domain_name (str): Sanitized domain name
             domain (dict): Domain configuration
         """
@@ -360,12 +364,14 @@ class Domains:
                 logging.error(f"Error creating HTTP IngressRoute: {e}")
 
     @staticmethod
-    def create_https_ingress(namespace, service_name, domain_name, domain):
+    def create_https_ingress(namespace, name, service_name, domain_name, domain):
         """
         Create HTTPS IngressRoute for domain.
 
         Args:
             namespace (str): Kubernetes namespace
+            name (str): Resource name
+            service_name (str): Service name
             domain_name (str): Sanitized domain name
             domain (dict): Domain configuration
         """
