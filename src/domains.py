@@ -55,7 +55,7 @@ class Domains:
         return domain.replace('.', '-')
 
     @staticmethod
-    def check_domain_availability(domain):
+    def check_domain_availability(namespace, name, domain):
         """
         Check if a domain is already in use across the cluster.
 
@@ -76,7 +76,7 @@ class Domains:
                 if 'routes' in route['spec']:
                     for route_rule in route['spec']['routes']:
                         if 'match' in route_rule and f"Host(`{domain}`)" in route_rule['match']:
-                            logging.warning(f"Domain {domain} is already in use")
+                            logging.warning(f" ↳ [{namespace}/{name}] Domain {domain} is already in use")
                             return False
             return True
         except ApiException as e:
@@ -112,12 +112,16 @@ class Domains:
 
             # Check domain availability with a more specific check
             if not Domains.check_domain_availability(domain['url']):
-                logging.warning(f"Domain {domain['url']} is already in use")
+                logging.warning(f" ↳ [{namespace}/{name}] Domain {domain['url']} is already in use")
                 return False
 
             # Sanitize domain name for Kubernetes resources
             domain_name = Domains.sanitize_domain_name(domain['url'])
-            service_name = f"{name}--{domain['container']}"
+            service_name = f"{name}-{domain['container']}"
+
+            logging.info(f" ↳ [{namespace}/{name}] Creating domain resources for {domain['url']}")
+            logging.info(f" ↳ [{namespace}/{name}] Domain name: {domain_name}")
+            logging.info(f" ↳ [{namespace}/{name}] Service name: {service_name}")
 
             # Create domain resources with better error tracking
             resources_created = [
@@ -130,14 +134,14 @@ class Domains:
 
             # Check if all resources were created successfully
             if all(resources_created):
-                logging.info(f"Successfully created all domain resources for {domain['url']}")
+                logging.info(f" ↳ [{namespace}/{name}] Successfully created all domain resources for {domain['url']}")
                 return True
             else:
-                logging.error(f"Some domain resources failed to create for {domain['url']}")
+                logging.error(f" ↳ [{namespace}/{name}] Some domain resources failed to create for {domain['url']}")
                 return False
 
         except Exception as e:
-            logging.error(f"Comprehensive error in domain creation: {e}", exc_info=True)
+            logging.error(f" ↳ [{namespace}/{name}] Error in domain creation: {e}", exc_info=True)
             raise
 
     @staticmethod
@@ -182,7 +186,7 @@ class Domains:
                 plural="certificates",
                 body=certificate
             )
-            logging.info(f"Created certificate for domain {domain['url']}")
+            logging.info(f" ↳ [{namespace}/{name}] Created certificate for domain {domain['url']}")
         except ApiException as e:
             if e.status == 409:
                 logging.info(f"Certificate {name} already exists")
@@ -209,7 +213,7 @@ class Domains:
         )
 
         if service:
-            logging.info(f"Service {service_name} exists, update configuration")
+            logging.info(f" ↳ [{namespace}/{name}] Service {service_name} exists, update configuration")
 
             service.spec.ports.forEach(lambda port: service_ports.append(
                 client.V1ServicePort(
@@ -259,14 +263,14 @@ class Domains:
                     name=service_name,
                     body=service
                 )
-                logging.info(f"Updated service for {service_name} in namespace {namespace}")
+                logging.info(f" ↳ [{namespace}/{name}] Updated service for {service_name} in namespace {namespace}")
 
             else:
                 KubernetesAPI.core.create_namespaced_service(
                     namespace=namespace,
                     body=service
                 )
-                logging.info(f"Created service for {service_name} in namespace {namespace}")
+                logging.info(f" ↳ [{namespace}/{name}] Created service for {service_name} in namespace {namespace}")
         except ApiException as e:
             logging.error(f"Error creating service: {e}")
 
@@ -303,12 +307,12 @@ class Domains:
                 plural="middlewares",
                 body=middleware
             )
-            logging.info(f"Created HTTPS redirect middleware for {name}")
+            logging.info(f" ↳ [{namespace}/{name}] Created HTTPS redirect middleware for {name}")
         except ApiException as e:
             if e.status == 409:
-                logging.info(f"Middleware {name}-redirect already exists")
+                logging.info(f" ↳ [{namespace}/{name}] Middleware {name}-redirect already exists")
             else:
-                logging.error(f"Error creating middleware: {e}")
+                logging.error(f" ↳ [{namespace}/{name}] Error creating middleware: {e}")
 
     @staticmethod
     def create_http_ingress(namespace, name, service_name, domain_name, domain):
@@ -356,12 +360,12 @@ class Domains:
                 plural="ingressroutes",
                 body=http_route
             )
-            logging.info(f"Created HTTP IngressRoute for {domain['url']}")
+            logging.info(f" ↳ [{namespace}/{name}] Created HTTP IngressRoute for {domain['url']}")
         except ApiException as e:
             if e.status == 409:
-                logging.info(f"HTTP IngressRoute {domain_name}-http already exists")
+                logging.info(f" ↳ [{namespace}/{name}] HTTP IngressRoute {domain_name}-http already exists")
             else:
-                logging.error(f"Error creating HTTP IngressRoute: {e}")
+                logging.error(f" ↳ [{namespace}/{name}] Error creating HTTP IngressRoute: {e}")
 
     @staticmethod
     def create_https_ingress(namespace, name, service_name, domain_name, domain):
@@ -408,12 +412,12 @@ class Domains:
                 plural="ingressroutes",
                 body=https_route
             )
-            logging.info(f"Created HTTPS IngressRoute for {domain['url']}")
+            logging.info(f" ↳ [{namespace}/{name}] Created HTTPS IngressRoute for {domain['url']}")
         except ApiException as e:
             if e.status == 409:
-                logging.info(f"HTTPS IngressRoute {domain_name}-https already exists")
+                logging.info(f" ↳ [{namespace}/{name}] HTTPS IngressRoute {domain_name}-https already exists")
             else:
-                logging.error(f"Error creating HTTPS IngressRoute: {e}")
+                logging.error(f" ↳ [{namespace}/{name}] Error creating HTTPS IngressRoute: {e}")
 
     @staticmethod
     def delete_domain(namespace, name, domain):
@@ -440,13 +444,13 @@ class Domains:
 
             # Check if all resources were deleted successfully
             if all(resources_deleted):
-                logging.info(f"Successfully deleted all domain resources for {domain['url']}")
+                logging.info(f" ↳ [{namespace}/{name}] Successfully deleted all domain resources for {domain['url']}")
             else:
-                logging.error(f"Some domain resources failed to delete for {domain['url']}")
+                logging.error(f" ↳ [{namespace}/{name}] Some domain resources failed to delete for {domain['url']}")
 
         except ApiException as e:
             if e.status != 404:
-                logging.error(f"Error deleting domain resources: {e}")
+                logging.error(f" ↳ [{namespace}/{name}] Error deleting domain resources: {e}")
 
     @staticmethod
     def delete_http_ingress(namespace, name):
@@ -465,14 +469,14 @@ class Domains:
                 plural="ingressroutes",
                 name=f"{name}-http"
             )
-            logging.info(f"Deleted HTTP IngressRoute for {name}")
+            logging.info(f" ↳ [{namespace}/{name}] Deleted HTTP IngressRoute for {name}")
             return True
         except ApiException as e:
             if e.status == 404:
-                logging.info(f"HTTP IngressRoute {name}-http not found")
+                logging.info(f" ↳ [{namespace}/{name}] HTTP IngressRoute {name}-http not found")
                 return True
             else:
-                logging.error(f"Error deleting HTTP IngressRoute: {e}")
+                logging.error(f" ↳ [{namespace}/{name}] Error deleting HTTP IngressRoute: {e}")
                 return False
 
     @staticmethod
@@ -492,14 +496,14 @@ class Domains:
                 plural="ingressroutes",
                 name=f"{name}-https"
             )
-            logging.info(f"Deleted HTTPS IngressRoute for {name}")
+            logging.info(f" ↳ [{namespace}/{name}] Deleted HTTPS IngressRoute for {name}")
             return True
         except ApiException as e:
             if e.status == 404:
-                logging.info(f"HTTPS IngressRoute {name}-https not found")
+                logging.info(f" ↳ [{namespace}/{name}] HTTPS IngressRoute {name}-https not found")
                 return True
             else:
-                logging.error(f"Error deleting HTTPS IngressRoute: {e}")
+                logging.error(f" ↳ [{namespace}/{name}] Error deleting HTTPS IngressRoute: {e}")
                 return False
 
     @staticmethod
@@ -519,14 +523,14 @@ class Domains:
                 plural="middlewares",
                 name=f"{name}-redirect"
             )
-            logging.info(f"Deleted HTTPS redirect middleware for {name}")
+            logging.info(f" ↳ [{namespace}/{name}] Deleted HTTPS redirect middleware for {name}")
             return True
         except ApiException as e:
             if e.status == 404:
-                logging.info(f"Middleware {name}-redirect not found")
+                logging.info(f" ↳ [{namespace}/{name}] Middleware {name}-redirect not found")
                 return True
             else:
-                logging.error(f"Error deleting middleware: {e}")
+                logging.error(f" ↳ [{namespace}/{name}] Error deleting middleware: {e}")
                 return False
 
     @staticmethod
@@ -544,14 +548,14 @@ class Domains:
                 namespace=namespace,
                 name=f"{name}--{domain['url']}"
             )
-            logging.info(f"Deleted service for {name} in namespace {namespace}")
+            logging.info(f" ↳ [{namespace}/{name}] Deleted service for {name} in namespace {namespace}")
             return True
         except ApiException as e:
             if e.status == 404:
-                logging.info(f"Service {name} not found")
+                logging.info(f" ↳ [{namespace}/{name}] Service {name} not found")
                 return True
             else:
-                logging.error(f"Error deleting service: {e}")
+                logging.error(f" ↳ [{namespace}/{name}] Error deleting service: {e}")
                 return False
 
     @staticmethod
@@ -571,12 +575,12 @@ class Domains:
                 plural="certificates",
                 name=name
             )
-            logging.info(f"Deleted certificate {name}")
+            logging.info(f" ↳ [{namespace}/{name}] Deleted certificate {name}")
             return True
         except ApiException as e:
             if e.status == 404:
-                logging.info(f"Certificate {name} not found")
+                logging.info(f" ↳ [{namespace}/{name}] Certificate {name} not found")
                 return True
             else:
-                logging.error(f"Error deleting certificate: {e}")
+                logging.error(f" ↳ [{namespace}/{name}] Error deleting certificate: {e}")
                 return False
