@@ -267,14 +267,14 @@ class Domain:
                     name=service_name,
                     body=service
                 )
-                logging.info(f" ↳ [{self.namespace}/{self.name}] Updated service for {service_name} in namespace {namespace}")
+                logging.info(f" ↳ [{self.namespace}/{self.name}] Updated service")
 
             else:
                 KubernetesAPI.core.create_namespaced_service(
                     namespace=self.namespace,
                     body=service
                 )
-                logging.info(f" ↳ [{self.namespace}/{self.name}] Created service for {service_name} in namespace {namespace}")
+                logging.info(f" ↳ [{self.namespace}/{self.name}] Created service")
         except ApiException as e:
             logging.error(f"Error creating service: {e}")
 
