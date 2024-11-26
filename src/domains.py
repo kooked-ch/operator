@@ -6,8 +6,18 @@ import re
 
 
 class Domains:
-    @staticmethod
-    def validate_domain(domain):
+    def __init__(self, namespace, name):
+        """
+        Initialize the Domains instance with namespace and resource name.
+
+        Args:
+            namespace (str): Kubernetes namespace
+            name (str): Resource name
+        """
+        self.namespace = namespace
+        self.name = name
+
+    def validate_domain(self, domain):
         """
         Validate domain configuration with more comprehensive checks.
 
@@ -40,8 +50,7 @@ class Domains:
 
         return domain
 
-    @staticmethod
-    def sanitize_domain_name(domain):
+    def sanitize_domain_name(self, domain):
         """
         Sanitize domain name for use in Kubernetes resource names.
 
@@ -54,8 +63,7 @@ class Domains:
 
         return domain.replace('.', '-')
 
-    @staticmethod
-    def check_domain_availability(namespace, name, domain):
+    def check_domain_availability(self, domain):
         """
         Check if a domain is already in use across the cluster.
 
@@ -76,15 +84,14 @@ class Domains:
                 if 'routes' in route['spec']:
                     for route_rule in route['spec']['routes']:
                         if 'match' in route_rule and f"Host(`{domain}`)" in route_rule['match']:
-                            logging.warning(f" ↳ [{namespace}/{name}] Domain {domain} is already in use")
+                            logging.warning(f" ↳ [{self.namespace}/{self.name}] Domain {domain} is already in use")
                             return False
             return True
         except ApiException as e:
             logging.error(f"Error checking domain availability: {e}")
             return False
 
-    @staticmethod
-    def generate_domain_name(domain):
+    def generate_domain_name(self, domain):
         """
         Generate a TLS secret name for a given domain.
 
@@ -96,8 +103,7 @@ class Domains:
         """
         return f"{domain.replace('.', '-')}-tls"
 
-    @staticmethod
-    def create_domain(namespace, name, domain):
+    def create_domain(self, domain):
         """
         Enhanced domain creation with more robust error handling and logging.
 
@@ -108,44 +114,43 @@ class Domains:
         """
         try:
             # Comprehensive validation
-            domain = Domains.validate_domain(domain)
+            domain = self.validate_domain(domain)
 
             # Check domain availability with a more specific check
-            if not Domains.check_domain_availability(domain['url']):
-                logging.warning(f" ↳ [{namespace}/{name}] Domain {domain['url']} is already in use")
+            if not self.check_domain_availability(domain['url']):
+                logging.warning(f" ↳ [{self.namespace}/{self.name}] Domain {domain['url']} is already in use")
                 return False
 
             # Sanitize domain name for Kubernetes resources
-            domain_name = Domains.sanitize_domain_name(domain['url'])
-            service_name = f"{name}-{domain['container']}"
+            domain_name = self.sanitize_domain_name(domain['url'])
+            service_name = f"{self.name}-{domain['container']}"
 
-            logging.info(f" ↳ [{namespace}/{name}] Creating domain resources for {domain['url']}")
-            logging.info(f" ↳ [{namespace}/{name}] Domain name: {domain_name}")
-            logging.info(f" ↳ [{namespace}/{name}] Service name: {service_name}")
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Creating domain resources for {domain['url']}")
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Domain name: {domain_name}")
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Service name: {service_name}")
 
             # Create domain resources with better error tracking
             resources_created = [
-                Domains.create_certificate(namespace, name, domain, domain_name),
-                Domains.create_service(namespace, name, service_name, domain),
-                Domains.create_https_middleware(namespace, name, domain_name),
-                Domains.create_http_ingress(namespace, name, service_name, domain_name, domain),
-                Domains.create_https_ingress(namespace, name, service_name, domain_name, domain)
+                self.create_certificate(self.namespace, self.name, domain, domain_name),
+                self.create_service(self.namespace, self.name, service_name, domain),
+                self.create_https_middleware(self.namespace, self.name, domain_name),
+                self.create_http_ingress(self.namespace, self.name, service_name, domain_name, domain),
+                self.create_https_ingress(self.namespace, self.name, service_name, domain_name, domain)
             ]
 
             # Check if all resources were created successfully
             if all(resources_created):
-                logging.info(f" ↳ [{namespace}/{name}] Successfully created all domain resources for {domain['url']}")
+                logging.info(f" ↳ [{self.namespace}/{self.name}] Successfully created all domain resources for {domain['url']}")
                 return True
             else:
-                logging.error(f" ↳ [{namespace}/{name}] Some domain resources failed to create for {domain['url']}")
+                logging.error(f" ↳ [{self.namespace}/{self.name}] Some domain resources failed to create for {domain['url']}")
                 return False
 
         except Exception as e:
-            logging.error(f" ↳ [{namespace}/{name}] Error in domain creation: {e}", exc_info=True)
+            logging.error(f" ↳ [{self.namespace}/{self.name}] Error in domain creation: {e}", exc_info=True)
             raise
 
-    @staticmethod
-    def create_certificate(namespace, name, domain, domain_name):
+    def create_certificate(self, domain, domain_name):
         """
         Create a certificate for the domain.
 
@@ -160,7 +165,7 @@ class Domains:
             "kind": "Certificate",
             "metadata": {
                 "name": domain_name,
-                "namespace": namespace
+                "namespace": self.namespace
             },
             "spec": {
                 "dnsNames": [domain['url']],
@@ -182,19 +187,18 @@ class Domains:
             KubernetesAPI.custom.create_namespaced_custom_object(
                 group="cert-manager.io",
                 version="v1",
-                namespace=namespace,
+                namespace=self.namespace,
                 plural="certificates",
                 body=certificate
             )
-            logging.info(f" ↳ [{namespace}/{name}] Created certificate for domain {domain['url']}")
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Created certificate for domain {domain['url']}")
         except ApiException as e:
             if e.status == 409:
-                logging.info(f"Certificate {name} already exists")
+                logging.info(f" ↳ [{self.namespace}/{self.name}] Certificate {name} already exists")
             else:
-                logging.error(f"Error creating certificate: {e}")
+                logging.error(f" ↳ [{self.namespace}/{self.name}] Error creating certificate: {e}")
 
-    @staticmethod
-    def create_service(namespace, name, service_name, domain):
+    def create_service(self, service_name, domain):
         """
         Create a Kubernetes service for the domain.
 
@@ -208,12 +212,12 @@ class Domains:
         service_ports = []
 
         service = KubernetesAPI.core.read_namespaced_service(
-            namespace=namespace,
+            namespace=self.namespace,
             name=service_name
         )
 
         if service:
-            logging.info(f" ↳ [{namespace}/{name}] Service {service_name} exists, update configuration")
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Service {service_name} exists, update configuration")
 
             service.spec.ports.forEach(lambda port: service_ports.append(
                 client.V1ServicePort(
@@ -245,12 +249,12 @@ class Domains:
             api_version="v1",
             kind="Service",
             metadata=client.V1ObjectMeta(
-                name=f"{service_name}",
-                namespace=namespace,
-                labels={"app": name, "container": domain['container']}
+                name=service_name,
+                namespace=self.namespace,
+                labels={"app": self.name, "container": domain['container']}
             ),
             spec=client.V1ServiceSpec(
-                selector={"app": name, "container": domain['container']},
+                selector={"app": self.name, "container": domain['container']},
                 ports=service_ports,
                 type="ClusterIP"
             )
@@ -259,23 +263,22 @@ class Domains:
         try:
             if service:
                 KubernetesAPI.core.patch_namespaced_service(
-                    namespace=namespace,
+                    namespace=self.namespace,
                     name=service_name,
                     body=service
                 )
-                logging.info(f" ↳ [{namespace}/{name}] Updated service for {service_name} in namespace {namespace}")
+                logging.info(f" ↳ [{self.namespace}/{self.name}] Updated service for {service_name} in namespace {namespace}")
 
             else:
                 KubernetesAPI.core.create_namespaced_service(
-                    namespace=namespace,
+                    namespace=self.namespace,
                     body=service
                 )
-                logging.info(f" ↳ [{namespace}/{name}] Created service for {service_name} in namespace {namespace}")
+                logging.info(f" ↳ [{self.namespace}/{self.name}] Created service for {service_name} in namespace {namespace}")
         except ApiException as e:
             logging.error(f"Error creating service: {e}")
 
-    @staticmethod
-    def create_https_middleware(namespace, name, domain_name):
+    def create_https_middleware(self, domain_name):
         """
         Create HTTPS redirection middleware.
 
@@ -289,7 +292,7 @@ class Domains:
             "kind": "Middleware",
             "metadata": {
                 "name": f"{domain_name}-redirect",
-                "namespace": namespace
+                "namespace": self.namespace
             },
             "spec": {
                 "redirectScheme": {
@@ -303,19 +306,18 @@ class Domains:
             KubernetesAPI.custom.create_namespaced_custom_object(
                 group="traefik.containo.us",
                 version="v1alpha1",
-                namespace=namespace,
+                namespace=self.namespace,
                 plural="middlewares",
                 body=middleware
             )
-            logging.info(f" ↳ [{namespace}/{name}] Created HTTPS redirect middleware for {name}")
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Created HTTPS redirect middleware")
         except ApiException as e:
             if e.status == 409:
-                logging.info(f" ↳ [{namespace}/{name}] Middleware {name}-redirect already exists")
+                logging.info(f" ↳ [{self.namespace}/{self.name}] Middleware redirect already exists")
             else:
-                logging.error(f" ↳ [{namespace}/{name}] Error creating middleware: {e}")
+                logging.error(f" ↳ [{self.namespace}/{self.name}] Error creating middleware: {e}")
 
-    @staticmethod
-    def create_http_ingress(namespace, name, service_name, domain_name, domain):
+    def create_http_ingress(self, service_name, domain_name, domain):
         """
         Create HTTP IngressRoute for domain redirection.
 
@@ -333,7 +335,7 @@ class Domains:
             "kind": "IngressRoute",
             "metadata": {
                 "name": f"{domain_name}-http",
-                "namespace": namespace
+                "namespace": self.namespace
             },
             "spec": {
                 "entryPoints": ["web"],
@@ -342,7 +344,7 @@ class Domains:
                     "kind": "Rule",
                     "middlewares": [{
                         "name": f"{domain_name}-redirect",
-                        "namespace": namespace
+                        "namespace": self.namespace
                     }],
                     "services": [{
                         "name": service_name,
@@ -356,19 +358,18 @@ class Domains:
             KubernetesAPI.custom.create_namespaced_custom_object(
                 group="traefik.containo.us",
                 version="v1alpha1",
-                namespace=namespace,
+                namespace=self.namespace,
                 plural="ingressroutes",
                 body=http_route
             )
-            logging.info(f" ↳ [{namespace}/{name}] Created HTTP IngressRoute for {domain['url']}")
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Created HTTP IngressRoute for {domain['url']}")
         except ApiException as e:
             if e.status == 409:
-                logging.info(f" ↳ [{namespace}/{name}] HTTP IngressRoute {domain_name}-http already exists")
+                logging.info(f" ↳ [{self.namespace}/{self.name}] HTTP IngressRoute {domain_name}-http already exists")
             else:
-                logging.error(f" ↳ [{namespace}/{name}] Error creating HTTP IngressRoute: {e}")
+                logging.error(f" ↳ [{self.namespace}/{self.name}] Error creating HTTP IngressRoute: {e}")
 
-    @staticmethod
-    def create_https_ingress(namespace, name, service_name, domain_name, domain):
+    def create_https_ingress(self, service_name, domain_name, domain):
         """
         Create HTTPS IngressRoute for domain.
 
@@ -386,7 +387,7 @@ class Domains:
             "kind": "IngressRoute",
             "metadata": {
                 "name": f"{domain_name}-https",
-                "namespace": namespace
+                "namespace": self.namespace
             },
             "spec": {
                 "entryPoints": ["websecure"],
@@ -408,19 +409,18 @@ class Domains:
             KubernetesAPI.custom.create_namespaced_custom_object(
                 group="traefik.containo.us",
                 version="v1alpha1",
-                namespace=namespace,
+                namespace=self.namespace,
                 plural="ingressroutes",
                 body=https_route
             )
-            logging.info(f" ↳ [{namespace}/{name}] Created HTTPS IngressRoute for {domain['url']}")
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Created HTTPS IngressRoute for {domain['url']}")
         except ApiException as e:
             if e.status == 409:
-                logging.info(f" ↳ [{namespace}/{name}] HTTPS IngressRoute {domain_name}-https already exists")
+                logging.info(f" ↳ [{self.namespace}/{self.name}] HTTPS IngressRoute {domain_name}-https already exists")
             else:
-                logging.error(f" ↳ [{namespace}/{name}] Error creating HTTPS IngressRoute: {e}")
+                logging.error(f" ↳ [{self.namespace}/{self.name}] Error creating HTTPS IngressRoute: {e}")
 
-    @staticmethod
-    def delete_domain(namespace, name, domain):
+    def delete_domain(self, domain):
         """
         Delete domain-related resources.
 
@@ -430,30 +430,30 @@ class Domains:
             domain (dict): Domain configuration
         """
         try:
-            sanitized_domain = Domains.sanitize_domain_name(domain['url'])
+            sanitized_domain = self.sanitize_domain_name(domain['url'])
             domain_name = f"{sanitized_domain}-domain"
+            service_name = f"{self.name}-{domain['container']}"
 
             # Delete resources in reverse order of creation
             resources_deleted = [
-                Domains.delete_https_ingress(namespace, name),
-                Domains.delete_http_ingress(namespace, name),
-                Domains.delete_https_middleware(namespace, domain_name),
-                Domains.delete_service(namespace, name, domain),
-                Domains.delete_certificate(namespace, domain_name)
+                self.delete_https_ingress(domain_name),
+                self.delete_http_ingress(domain_name),
+                self.delete_https_middleware(domain_name),
+                self.delete_service(service_name, domain),
+                self.delete_certificate(domain_name)
             ]
 
             # Check if all resources were deleted successfully
             if all(resources_deleted):
-                logging.info(f" ↳ [{namespace}/{name}] Successfully deleted all domain resources for {domain['url']}")
+                logging.info(f" ↳ [{self.namespace}/{self.name}] Successfully deleted all domain resources for {domain['url']}")
             else:
-                logging.error(f" ↳ [{namespace}/{name}] Some domain resources failed to delete for {domain['url']}")
+                logging.error(f" ↳ [{self.namespace}/{self.name}] Some domain resources failed to delete for {domain['url']}")
 
         except ApiException as e:
             if e.status != 404:
-                logging.error(f" ↳ [{namespace}/{name}] Error deleting domain resources: {e}")
+                logging.error(f" ↳ [{self.namespace}/{self.name}] Error deleting domain resources: {e}")
 
-    @staticmethod
-    def delete_http_ingress(namespace, name):
+    def delete_http_ingress(self, domain_name):
         """
         Delete HTTP IngressRoute for domain redirection.
 
@@ -465,22 +465,21 @@ class Domains:
             KubernetesAPI.custom.delete_namespaced_custom_object(
                 group="traefik.containo.us",
                 version="v1alpha1",
-                namespace=namespace,
+                namespace=self.namespace,
                 plural="ingressroutes",
-                name=f"{name}-http"
+                name=f"{domain_name}-http"
             )
-            logging.info(f" ↳ [{namespace}/{name}] Deleted HTTP IngressRoute for {name}")
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Deleted HTTP IngressRoute")
             return True
         except ApiException as e:
             if e.status == 404:
-                logging.info(f" ↳ [{namespace}/{name}] HTTP IngressRoute {name}-http not found")
+                logging.info(f" ↳ [{self.namespace}/{self.name}] HTTP IngressRoute {domain_name}-http not found")
                 return True
             else:
-                logging.error(f" ↳ [{namespace}/{name}] Error deleting HTTP IngressRoute: {e}")
+                logging.error(f" ↳ [{self.namespace}/{self.name}] Error deleting HTTP IngressRoute: {e}")
                 return False
 
-    @staticmethod
-    def delete_https_ingress(namespace, name):
+    def delete_https_ingress(self, domain_name):
         """
         Delete HTTPS IngressRoute for domain.
 
@@ -492,22 +491,21 @@ class Domains:
             KubernetesAPI.custom.delete_namespaced_custom_object(
                 group="traefik.containo.us",
                 version="v1alpha1",
-                namespace=namespace,
+                namespace=self.namespace,
                 plural="ingressroutes",
-                name=f"{name}-https"
+                name=f"{domain_name}-https"
             )
-            logging.info(f" ↳ [{namespace}/{name}] Deleted HTTPS IngressRoute for {name}")
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Deleted HTTPS IngressRoute")
             return True
         except ApiException as e:
             if e.status == 404:
-                logging.info(f" ↳ [{namespace}/{name}] HTTPS IngressRoute {name}-https not found")
+                logging.info(f" ↳ [{self.namespace}/{self.name}] HTTPS IngressRoute {domain_name}-https not found")
                 return True
             else:
-                logging.error(f" ↳ [{namespace}/{name}] Error deleting HTTPS IngressRoute: {e}")
+                logging.error(f" ↳ [{self.namespace}/{self.name}] Error deleting HTTPS IngressRoute: {e}")
                 return False
 
-    @staticmethod
-    def delete_https_middleware(namespace, name):
+    def delete_https_middleware(self, domain_name):
         """
         Delete HTTPS redirection middleware.
 
@@ -519,22 +517,21 @@ class Domains:
             KubernetesAPI.custom.delete_namespaced_custom_object(
                 group="traefik.containo.us",
                 version="v1alpha1",
-                namespace=namespace,
+                namespace=self.namespace,
                 plural="middlewares",
-                name=f"{name}-redirect"
+                name=f"{domain_name}-redirect"
             )
-            logging.info(f" ↳ [{namespace}/{name}] Deleted HTTPS redirect middleware for {name}")
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Deleted HTTPS redirect middleware")
             return True
         except ApiException as e:
             if e.status == 404:
-                logging.info(f" ↳ [{namespace}/{name}] Middleware {name}-redirect not found")
+                logging.info(f" ↳ [{self.namespace}/{self.name}] Middleware {domain_name}-redirect not found")
                 return True
             else:
-                logging.error(f" ↳ [{namespace}/{name}] Error deleting middleware: {e}")
+                logging.error(f" ↳ [{self.namespace}/{self.name}] Error deleting middleware: {e}")
                 return False
 
-    @staticmethod
-    def delete_service(namespace, name, domain):
+    def delete_service(self, service_name, domain):
         """
         Delete a Kubernetes service for the domain.
 
@@ -545,21 +542,20 @@ class Domains:
         """
         try:
             KubernetesAPI.core.delete_namespaced_service(
-                namespace=namespace,
-                name=f"{name}--{domain['url']}"
+                namespace=self.namespace,
+                name=service_name
             )
-            logging.info(f" ↳ [{namespace}/{name}] Deleted service for {name} in namespace {namespace}")
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Deleted service")
             return True
         except ApiException as e:
             if e.status == 404:
-                logging.info(f" ↳ [{namespace}/{name}] Service {name} not found")
+                logging.info(f" ↳ [{self.namespace}/{self.name}] Service not found")
                 return True
             else:
-                logging.error(f" ↳ [{namespace}/{name}] Error deleting service: {e}")
+                logging.error(f" ↳ [{self.namespace}/{self.name}] Error deleting service: {e}")
                 return False
 
-    @staticmethod
-    def delete_certificate(namespace, name):
+    def delete_certificate(self, domain_name):
         """
         Delete a certificate for the domain.
 
@@ -571,16 +567,16 @@ class Domains:
             KubernetesAPI.custom.delete_namespaced_custom_object(
                 group="cert-manager.io",
                 version="v1",
-                namespace=namespace,
+                namespace=self.namespace,
                 plural="certificates",
-                name=name
+                name=domain_name
             )
-            logging.info(f" ↳ [{namespace}/{name}] Deleted certificate {name}")
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Deleted certificate")
             return True
         except ApiException as e:
             if e.status == 404:
-                logging.info(f" ↳ [{namespace}/{name}] Certificate {name} not found")
+                logging.info(f" ↳ [{self.namespace}/{self.name}] Certificate not found")
                 return True
             else:
-                logging.error(f" ↳ [{namespace}/{name}] Error deleting certificate: {e}")
+                logging.error(f" ↳ [{self.namespace}/{self.name}] Error deleting certificate: {e}")
                 return False
