@@ -432,7 +432,7 @@ class Domain:
         try:
             sanitized_domain = self.sanitize_domain_name(domain['url'])
             domain_name = f"{sanitized_domain}-domain"
-            service_name = f"{self.name}-{domain['container']}"
+            service_name = self.name
 
             # Delete resources in reverse order of creation
             resources_deleted = [
