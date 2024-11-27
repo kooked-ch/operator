@@ -6,16 +6,16 @@ import re
 
 
 class Domain:
-    def __init__(self, namespace, name):
+    def __init__(self, name, namespace):
         """
         Initialize the Domains instance with namespace and resource name.
 
         Args:
-            namespace (str): Kubernetes namespace
             name (str): Resource name
+            namespace (str): Kubernetes namespace
         """
-        self.namespace = namespace
         self.name = name
+        self.namespace = namespace
 
     def validate_domain(self, domain):
         """
