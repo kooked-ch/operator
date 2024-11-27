@@ -36,11 +36,10 @@ class Domain:
                 raise ValueError(f"Missing required domain configuration key: {key}")
 
         domain["url"] = re.sub(r'^https?://', '', domain["url"].lower())
-        domain["url"] = re.sub(r'\..*$', '', domain["url"])
         domain["url"] = re.sub(r'/$', '', domain["url"])
 
-        # Validate URL format
-        if not re.match(r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', domain['url']):
+        # Validate domain format
+        if not re.match(r'^[a-zA-Z0-9-]+\.[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', domain["url"]):
             raise ValueError(f"Invalid domain URL format: {domain['url']}")
 
         # Optional port validation
@@ -115,6 +114,8 @@ class Domain:
         try:
             domain = self.validate_domain(domain)
 
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Creating domain resources for {domain['url']}")
+
             if not self.check_domain_availability(domain['url']):
                 logging.warning(f" ↳ [{self.namespace}/{self.name}] Domain {domain['url']} is already in use")
                 raise ValueError(f"Domain {domain['url']} already in use")
@@ -122,31 +123,25 @@ class Domain:
             domain_name = self.sanitize_domain_name(domain['url'])
             service_name = self.name
 
-            logging.info(f" ↳ [{self.namespace}/{self.name}] Creating domain resources for {domain['url']}")
-            logging.info(f" ↳ [{self.namespace}/{self.name}] Domain name: {domain_name}")
-            logging.info(f" ↳ [{self.namespace}/{self.name}] Service name: {service_name}")
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Creating domain resources for {domain['url']}")
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Domain name: {domain_name}")
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Service name: {service_name}")
 
-            resources_created = [
-                self.create_certificate(domain, domain_name),
-                self.create_service(service_name, domain),
-                self.create_https_middleware(domain_name),
-                self.create_http_ingress(service_name, domain_name, domain),
-                self.create_https_ingress(service_name, domain_name, domain)
-            ]
-
-            if all(resources_created):
-                logging.info(f" ↳ [{self.namespace}/{self.name}] Successfully created all domain resources for {domain['url']}")
-            else:
-                logging.error(f" ↳ [{self.namespace}/{self.name}] Some domain resources failed to create for {domain['url']}")
-                raise ValueError(f"Error creating domain {domain['url']} resources")
+            self.create_certificate(domain, domain_name),
+            self.create_service(service_name, domain),
+            self.create_https_middleware(domain_name),
+            self.create_http_ingress(service_name, domain_name, domain),
+            self.create_https_ingress(service_name, domain_name, domain)
 
         except ValueError as e:
-            logging.error(f" ↳ [{self.namespace}/{self.name}] Error in domain creation: {e}", exc_info=True)
+            logging.error(f"    ↳ [{self.namespace}/{self.name}] Error in domain creation: {e}", exc_info=True)
             raise ValueError(f"Error creating domain {domain['url']}")
 
         except Exception as e:
-            logging.error(f" ↳ [{self.namespace}/{self.name}] Error creating domain: {e}", exc_info=True)
+            logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating domain: {e}", exc_info=True)
             raise ValueError(f"Error creating domain {domain['url']}")
+
+        logging.info(f"    ↳ [{self.namespace}/{self.name}] Successfully created domain resources for {domain['url']}")
 
     def create_certificate(self, domain, domain_name):
         """
@@ -189,56 +184,53 @@ class Domain:
                 plural="certificates",
                 body=certificate
             )
-            logging.info(f" ↳ [{self.namespace}/{self.name}] Created certificate for domain {domain['url']}")
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Created certificate for domain {domain['url']}")
         except ApiException as e:
             if e.status == 409:
-                logging.info(f" ↳ [{self.namespace}/{self.name}] Certificate {name} already exists")
+                logging.info(f"    ↳ [{self.namespace}/{self.name}] Certificate already exists")
             else:
-                logging.error(f" ↳ [{self.namespace}/{self.name}] Error creating certificate: {e}")
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating certificate: {e}")
 
     def create_service(self, service_name, domain):
         """
         Create a Kubernetes service for the domain.
 
         Args:
-            namespace (str): Kubernetes namespace
-            name (str): Resource name
             service_name (str): Service name
             domain (dict): Domain configuration
         """
-
         service_ports = []
+        try:
+            # Try to read existing service
+            service = KubernetesAPI.core.read_namespaced_service(
+                namespace=self.namespace,
+                name=service_name
+            )
+            service_exists = True
+        except ApiException as e:
+            if e.status == 404:
+                service = None
+                service_exists = False
+            else:
+                logging.error(f"Error reading service: {e}")
+                return
 
-        service = KubernetesAPI.core.read_namespaced_service(
-            namespace=self.namespace,
-            name=service_name
-        )
-
-        if service:
-            logging.info(f" ↳ [{self.namespace}/{self.name}] Service exists, update configuration")
-
-            service.spec.ports.forEach(lambda port: service_ports.append(
-                client.V1ServicePort(
-                    port=port.port,
-                    target_port=port.target_port,
-                    protocol=port.protocol
-                )
-            ))
-
-            if not any(port.port == domain.get('port', 80) for port in service.spec.ports):
+        if service_exists:
+            for port in service.spec.ports:
                 service_ports.append(
                     client.V1ServicePort(
-                        port=domain.get('port', 80),
-                        target_port=domain.get('port', 80),
-                        protocol="TCP"
+                        port=port.port,
+                        target_port=port.target_port,
+                        protocol=port.protocol
                     )
                 )
 
-        else:
+        default_port = domain.get('port', 80)
+        if not any(port.port == default_port for port in service_ports):
             service_ports.append(
                 client.V1ServicePort(
-                    port=80,
-                    target_port=domain.get('port', 80),
+                    port=default_port,
+                    target_port=default_port,
                     protocol="TCP"
                 )
             )
@@ -259,22 +251,21 @@ class Domain:
         )
 
         try:
-            if service:
+            if service_exists:
                 KubernetesAPI.core.patch_namespaced_service(
                     namespace=self.namespace,
                     name=service_name,
                     body=service
                 )
-                logging.info(f" ↳ [{self.namespace}/{self.name}] Updated service")
-
+                logging.info(f"    ↳ [{self.namespace}/{self.name}] Updated service")
             else:
                 KubernetesAPI.core.create_namespaced_service(
                     namespace=self.namespace,
                     body=service
                 )
-                logging.info(f" ↳ [{self.namespace}/{self.name}] Created service")
+                logging.info(f"    ↳ [{self.namespace}/{self.name}] Created service")
         except ApiException as e:
-            logging.error(f"Error creating service: {e}")
+            logging.error(f"Error creating/updating service: {e}")
 
     def create_https_middleware(self, domain_name):
         """
@@ -308,12 +299,12 @@ class Domain:
                 plural="middlewares",
                 body=middleware
             )
-            logging.info(f" ↳ [{self.namespace}/{self.name}] Created HTTPS redirect middleware")
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Created HTTPS redirect middleware")
         except ApiException as e:
             if e.status == 409:
-                logging.info(f" ↳ [{self.namespace}/{self.name}] Middleware redirect already exists")
+                logging.info(f"    ↳ [{self.namespace}/{self.name}] Middleware redirect already exists")
             else:
-                logging.error(f" ↳ [{self.namespace}/{self.name}] Error creating middleware: {e}")
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating middleware: {e}")
 
     def create_http_ingress(self, service_name, domain_name, domain):
         """
@@ -360,12 +351,12 @@ class Domain:
                 plural="ingressroutes",
                 body=http_route
             )
-            logging.info(f" ↳ [{self.namespace}/{self.name}] Created HTTP IngressRoute for {domain['url']}")
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Created HTTP IngressRoute for {domain['url']}")
         except ApiException as e:
             if e.status == 409:
-                logging.info(f" ↳ [{self.namespace}/{self.name}] HTTP IngressRoute {domain_name}-http already exists")
+                logging.info(f"    ↳ [{self.namespace}/{self.name}] HTTP IngressRoute {domain_name}-http already exists")
             else:
-                logging.error(f" ↳ [{self.namespace}/{self.name}] Error creating HTTP IngressRoute: {e}")
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating HTTP IngressRoute: {e}")
 
     def create_https_ingress(self, service_name, domain_name, domain):
         """
@@ -411,12 +402,12 @@ class Domain:
                 plural="ingressroutes",
                 body=https_route
             )
-            logging.info(f" ↳ [{self.namespace}/{self.name}] Created HTTPS IngressRoute for {domain['url']}")
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Created HTTPS IngressRoute for {domain['url']}")
         except ApiException as e:
             if e.status == 409:
-                logging.info(f" ↳ [{self.namespace}/{self.name}] HTTPS IngressRoute {domain_name}-https already exists")
+                logging.info(f"    ↳ [{self.namespace}/{self.name}] HTTPS IngressRoute {domain_name}-https already exists")
             else:
-                logging.error(f" ↳ [{self.namespace}/{self.name}] Error creating HTTPS IngressRoute: {e}")
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating HTTPS IngressRoute: {e}")
 
     def delete_domain(self, domain):
         """
@@ -428,20 +419,19 @@ class Domain:
             domain (dict): Domain configuration
         """
         try:
-            sanitized_domain = self.sanitize_domain_name(domain['url'])
-            domain_name = f"{sanitized_domain}-domain"
+            domain_name = self.sanitize_domain_name(domain['url'])
             service_name = self.name
 
-            # Delete resources in reverse order of creation
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Deleting domain resources for {domain['url']}")
+
             resources_deleted = [
                 self.delete_https_ingress(domain_name),
                 self.delete_http_ingress(domain_name),
                 self.delete_https_middleware(domain_name),
                 self.delete_service(service_name, domain),
-                self.delete_certificate(domain_name)
+                # self.delete_certificate(domain_name)
             ]
 
-            # Check if all resources were deleted successfully
             if all(resources_deleted):
                 logging.info(f" ↳ [{self.namespace}/{self.name}] Successfully deleted all domain resources for {domain['url']}")
             else:
@@ -467,14 +457,14 @@ class Domain:
                 plural="ingressroutes",
                 name=f"{domain_name}-http"
             )
-            logging.info(f" ↳ [{self.namespace}/{self.name}] Deleted HTTP IngressRoute")
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Deleted HTTP IngressRoute")
             return True
         except ApiException as e:
             if e.status == 404:
-                logging.info(f" ↳ [{self.namespace}/{self.name}] HTTP IngressRoute {domain_name}-http not found")
+                logging.info(f"    ↳ [{self.namespace}/{self.name}] HTTP IngressRoute {domain_name}-http not found")
                 return True
             else:
-                logging.error(f" ↳ [{self.namespace}/{self.name}] Error deleting HTTP IngressRoute: {e}")
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting HTTP IngressRoute: {e}")
                 return False
 
     def delete_https_ingress(self, domain_name):
@@ -493,14 +483,14 @@ class Domain:
                 plural="ingressroutes",
                 name=f"{domain_name}-https"
             )
-            logging.info(f" ↳ [{self.namespace}/{self.name}] Deleted HTTPS IngressRoute")
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Deleted HTTPS IngressRoute")
             return True
         except ApiException as e:
             if e.status == 404:
-                logging.info(f" ↳ [{self.namespace}/{self.name}] HTTPS IngressRoute {domain_name}-https not found")
+                logging.info(f"    ↳ [{self.namespace}/{self.name}] HTTPS IngressRoute {domain_name}-https not found")
                 return True
             else:
-                logging.error(f" ↳ [{self.namespace}/{self.name}] Error deleting HTTPS IngressRoute: {e}")
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting HTTPS IngressRoute: {e}")
                 return False
 
     def delete_https_middleware(self, domain_name):
@@ -519,14 +509,14 @@ class Domain:
                 plural="middlewares",
                 name=f"{domain_name}-redirect"
             )
-            logging.info(f" ↳ [{self.namespace}/{self.name}] Deleted HTTPS redirect middleware")
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Deleted HTTPS redirect middleware")
             return True
         except ApiException as e:
             if e.status == 404:
-                logging.info(f" ↳ [{self.namespace}/{self.name}] Middleware {domain_name}-redirect not found")
+                logging.info(f"    ↳ [{self.namespace}/{self.name}] Middleware {domain_name}-redirect not found")
                 return True
             else:
-                logging.error(f" ↳ [{self.namespace}/{self.name}] Error deleting middleware: {e}")
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting middleware: {e}")
                 return False
 
     def delete_service(self, service_name, domain):
@@ -543,14 +533,14 @@ class Domain:
                 namespace=self.namespace,
                 name=service_name
             )
-            logging.info(f" ↳ [{self.namespace}/{self.name}] Deleted service")
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Deleted service")
             return True
         except ApiException as e:
             if e.status == 404:
-                logging.info(f" ↳ [{self.namespace}/{self.name}] Service not found")
+                logging.info(f"    ↳ [{self.namespace}/{self.name}] Service not found")
                 return True
             else:
-                logging.error(f" ↳ [{self.namespace}/{self.name}] Error deleting service: {e}")
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting service: {e}")
                 return False
 
     def delete_certificate(self, domain_name):
@@ -569,12 +559,12 @@ class Domain:
                 plural="certificates",
                 name=domain_name
             )
-            logging.info(f" ↳ [{self.namespace}/{self.name}] Deleted certificate")
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Deleted certificate")
             return True
         except ApiException as e:
             if e.status == 404:
-                logging.info(f" ↳ [{self.namespace}/{self.name}] Certificate not found")
+                logging.info(f"    ↳ [{self.namespace}/{self.name}] Certificate not found")
                 return True
             else:
-                logging.error(f" ↳ [{self.namespace}/{self.name}] Error deleting certificate: {e}")
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting certificate: {e}")
                 return False
