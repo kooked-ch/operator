@@ -113,42 +113,40 @@ class Domain:
             domain (dict): Domain configuration
         """
         try:
-            # Comprehensive validation
             domain = self.validate_domain(domain)
 
-            # Check domain availability with a more specific check
             if not self.check_domain_availability(domain['url']):
                 logging.warning(f" ↳ [{self.namespace}/{self.name}] Domain {domain['url']} is already in use")
-                return False
+                raise ValueError(f"Domain {domain['url']} already in use")
 
-            # Sanitize domain name for Kubernetes resources
             domain_name = self.sanitize_domain_name(domain['url'])
-            service_name = f"{self.name}-{domain['container']}"
+            service_name = self.name
 
             logging.info(f" ↳ [{self.namespace}/{self.name}] Creating domain resources for {domain['url']}")
             logging.info(f" ↳ [{self.namespace}/{self.name}] Domain name: {domain_name}")
             logging.info(f" ↳ [{self.namespace}/{self.name}] Service name: {service_name}")
 
-            # Create domain resources with better error tracking
             resources_created = [
-                self.create_certificate(self.namespace, self.name, domain, domain_name),
-                self.create_service(self.namespace, self.name, service_name, domain),
-                self.create_https_middleware(self.namespace, self.name, domain_name),
-                self.create_http_ingress(self.namespace, self.name, service_name, domain_name, domain),
-                self.create_https_ingress(self.namespace, self.name, service_name, domain_name, domain)
+                self.create_certificate(domain, domain_name),
+                self.create_service(service_name, domain),
+                self.create_https_middleware(domain_name),
+                self.create_http_ingress(service_name, domain_name, domain),
+                self.create_https_ingress(service_name, domain_name, domain)
             ]
 
-            # Check if all resources were created successfully
             if all(resources_created):
                 logging.info(f" ↳ [{self.namespace}/{self.name}] Successfully created all domain resources for {domain['url']}")
-                return True
             else:
                 logging.error(f" ↳ [{self.namespace}/{self.name}] Some domain resources failed to create for {domain['url']}")
-                return False
+                raise ValueError(f"Error creating domain {domain['url']} resources")
+
+        except ValueError as e:
+            logging.error(f" ↳ [{self.namespace}/{self.name}] Error in domain creation: {e}", exc_info=True)
+            raise ValueError(f"Error creating domain {domain['url']}")
 
         except Exception as e:
-            logging.error(f" ↳ [{self.namespace}/{self.name}] Error in domain creation: {e}", exc_info=True)
-            raise
+            logging.error(f" ↳ [{self.namespace}/{self.name}] Error creating domain: {e}", exc_info=True)
+            raise ValueError(f"Error creating domain {domain['url']}")
 
     def create_certificate(self, domain, domain_name):
         """
@@ -217,7 +215,7 @@ class Domain:
         )
 
         if service:
-            logging.info(f" ↳ [{self.namespace}/{self.name}] Service {service_name} exists, update configuration")
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Service exists, update configuration")
 
             service.spec.ports.forEach(lambda port: service_ports.append(
                 client.V1ServicePort(
