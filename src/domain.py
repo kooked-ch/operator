@@ -251,10 +251,10 @@ class Domain:
             metadata=client.V1ObjectMeta(
                 name=service_name,
                 namespace=self.namespace,
-                labels={"app": self.name, "container": domain['container']}
+                labels={"app": self.name}
             ),
             spec=client.V1ServiceSpec(
-                selector={"app": self.name, "container": domain['container']},
+                selector={"app": self.name},
                 ports=service_ports,
                 type="ClusterIP"
             )
