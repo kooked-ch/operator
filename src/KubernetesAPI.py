@@ -28,6 +28,7 @@ class KubernetesAPI:
         self._dynamic = DynamicClient(client.ApiClient())
         self._networking = client.NetworkingV1Api()
         self._apps = client.AppsV1Api()
+        self._rbac = client.RbacAuthorizationV1Api()
 
     @classproperty
     def custom(cls):
@@ -52,3 +53,7 @@ class KubernetesAPI:
     @classproperty
     def apps(cls):
         return cls.__get()._apps
+
+    @classproperty
+    def rbac(cls):
+        return cls.__get()._rbac
