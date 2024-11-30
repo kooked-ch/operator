@@ -58,17 +58,14 @@ spec:
                     properties:
                       name:
                         type: string
-                      version:
+                      user:
                         type: string
-                      settings:
-                        type: object
-                        properties:
-                          user:
-                            type: string
-                          password:
-                            type: string
-                          db:
-                            type: string
+                      password:
+                        type: string
+                      db:
+                        type: string
+                      provider:
+                        type: string
                 domains:
                   type: array
                   items:
@@ -80,37 +77,37 @@ spec:
                         type: string
                       port:
                         type: integer
-  additionalPrinterColumns:
-    - name: Project
-      type: string
-      description: Project associated with the deployment.
-      jsonPath: .metadata.namespace
-    - name: Replicas
-      type: integer
-      description: Number of replicas for the deployment.
-      jsonPath: .spec.replicas
-    - name: Age
-      type: date
-      description: Time since the deployment was created.
-      jsonPath: .metadata.creationTimestamp
-    - name: Status
-      type: string
-      description: Status phase of the deployment.
-      jsonPath: .status.phase
-    - name: Containers
-      type: string
-      description: Containers associated with the deployment.
-      jsonPath: .spec.containers[*].name
-      priority: 1
-    - name: Domains
-      type: string
-      description: Domains associated with the deployment.
-      jsonPath: .spec.containers[*].domains[*].url
-      priority: 1
-    - name: Databases
-      type: string
-      description: Databases associated with the deployment.
-      jsonPath: .spec.databases[*].name
-      priority: 1
+      additionalPrinterColumns:
+        - name: Project
+          type: string
+          description: Project associated with the deployment.
+          jsonPath: .metadata.namespace
+        - name: Replicas
+          type: integer
+          description: Number of replicas for the deployment.
+          jsonPath: .spec.replicas
+        - name: Age
+          type: date
+          description: Time since the deployment was created.
+          jsonPath: .metadata.creationTimestamp
+        - name: Status
+          type: string
+          description: Status phase of the deployment.
+          jsonPath: .status.phase
+        - name: Containers
+          type: string
+          description: Containers associated with the deployment.
+          jsonPath: .spec.containers[*].name
+          priority: 1
+        - name: Domains
+          type: string
+          description: Domains associated with the deployment.
+          jsonPath: .spec.domains[*].url
+          priority: 1
+        - name: Databases
+          type: string
+          description: Databases associated with the deployment.
+          jsonPath: .spec.databases[*].name
+          priority: 1
   subresources:
     status: {}
