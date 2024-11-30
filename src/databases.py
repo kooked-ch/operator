@@ -264,6 +264,56 @@ class MongoDB(BaseDatabase):
             logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating MongoDB cluster: {e}")
             raise
 
+    def delete_database(self, configuration):
+        """
+        Delete a database within the MongoDB cluster
+
+        Args:
+            configuration (dict): Database configuration
+        """
+        try:
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Deleting MongoDB database {configuration['name']}")
+
+            KubernetesAPI.custom.delete_namespaced_custom_object(
+                group="mongodbcommunity.mongodb.com",
+                version="v1",
+                namespace=self.namespace,
+                plural="mongodbcommunity",
+                name=f"{self.name}-mongo"
+            )
+        except ApiException as e:
+            if e.status == 404:
+                logging.warn(f"    ↳ [{self.namespace}/{self.name}] MongoDB database {configuration['name']} not found")
+            else:
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting MongoDB database: {e}")
+                raise
+        except Exception as e:
+            logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting MongoDB database: {e}")
+            raise
+
+    def delete_user(self):
+        """
+        Delete a user within the MongoDB cluster
+
+        """
+        try:
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Deleting MongoDB user")
+
+            secret_name = f"{self.name}-mongo-password"
+            KubernetesAPI.core.delete_namespaced_secret(
+                name=secret_name,
+                namespace=self.namespace
+            )
+        except ApiException as e:
+            if e.status == 404:
+                logging.warn(f"    ↳ [{self.namespace}/{self.name}] MongoDB user not found")
+            else:
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting MongoDB user: {e}")
+                raise
+        except Exception as e:
+            logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting MongoDB user: {e}")
+            raise
+
 
 class MariaDB(BaseDatabase):
     """
@@ -523,37 +573,26 @@ class Databases:
         else:
             raise ValueError(f"Unsupported database provider: {configuration['provider']}")
 
+    def delete_database(self, configuration):
+        """
+        Delete a database deployment
 
-# Example Usage
-def main():
-    database_configs = [
-        {
-            'settings': {
-                'db': 'markdown_to_pdf',
-                'user': 'asdhajdskasd',
-                'password': 'asdhasdhasd'
-            }
-        },
-        {
-            'name': 'mariadb',
-            'namespace': 'default',
-            'settings': {
-                'db': 'markdown_to_pdf',
-                'user': 'asdhajdskasd',
-                'password': 'asdhasdhasd'
-            }
-        }
-    ]
+        Args:
+            configuration (dict): Database configuration
+        """
 
-    try:
-        orchestrator = DatabaseDeploymentOrchestrator(database_configs)
-        
-        # Optional: Access specific database managers if needed
-        mongo_manager = orchestrator.get_database_manager('mongo')
-        mariadb_manager = orchestrator.get_database_manager('mariadb')
+        logging.info(f" ↳ [{self.namespace}/{self.name}] Deleting database resources for {configuration['name']}")
 
-    except Exception as e:
-        logging.error(f"Database deployment orchestration failed: {e}")
+        self._validate_database_configs(configuration)
 
-if __name__ == "__main__":
-    main()
+        if configuration['provider'].lower() == 'mongodb':
+            manager = MongoDB(self.name, self.namespace)
+            manager.delete_database(configuration)
+            manager.delete_user()
+
+            # Ajoutez votre logique de suppression ici
+        elif configuration['provider'].lower() == 'mariadb':
+            manager = MariaDB(self.name, self.namespace)
+            # Ajoutez votre logique de suppression ici
+        else:
+            raise ValueError(f"Unsupported database provider: {configuration['provider']}")
