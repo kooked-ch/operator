@@ -433,13 +433,13 @@ class Domain:
             ]
 
             if all(resources_deleted):
-                logging.info(f" ↳ [{self.namespace}/{self.name}] Successfully deleted all domain resources for {domain['url']}")
+                logging.info(f"    ↳ [{self.namespace}/{self.name}] Successfully deleted all domain resources for {domain['url']}")
             else:
-                logging.error(f" ↳ [{self.namespace}/{self.name}] Some domain resources failed to delete for {domain['url']}")
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Some domain resources failed to delete for {domain['url']}")
 
         except ApiException as e:
             if e.status != 404:
-                logging.error(f" ↳ [{self.namespace}/{self.name}] Error deleting domain resources: {e}")
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting domain resources: {e}")
 
     def delete_http_ingress(self, domain_name):
         """
