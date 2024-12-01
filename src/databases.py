@@ -2,6 +2,8 @@ import logging
 from abc import ABC, abstractmethod
 from src.KubernetesAPI import KubernetesAPI
 from kubernetes.client.rest import ApiException
+import random
+import string
 
 
 class BaseDatabase(ABC):
@@ -24,419 +26,113 @@ class BaseDatabase(ABC):
         pass
 
     @abstractmethod
-    def create_user(self, username, password, database_name, roles=None):
+    def create_secret(self, configuration):
         """
-        Create a database user with specific permissions
+        Create a Kubernetes secret for the database
+
+        Args:
+            configuration (dict): Database configuration
         """
         pass
 
-
-class MongoDB(BaseDatabase):
-    """
-    Specialized manager for MongoDB deployments using MongoDB Community Operator
-    """
-
-    def create_service_account(self):
+    @abstractmethod
+    def create_stateful_set(self, configuration):
         """
-        Create a service account for the MongoDB operator
-        """
-        service_account = {
-            "apiVersion": "v1",
-            "kind": "ServiceAccount",
-            "metadata": {
-                "name": "mongodb-database",
-                "namespace": self.namespace
-            }
-        }
-
-        try:
-            KubernetesAPI.core.create_namespaced_service_account(
-                namespace=self.namespace,
-                body=service_account
-            )
-            logging.info(f"    ↳ [{self.namespace}/{self.name}] Service account created")
-        except ApiException as e:
-            if e.status == 409:
-                logging.warn(f"    ↳ [{self.namespace}/{self.name}] Service account already exists")
-            else:
-                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating service account: {e}")
-                raise
-        except Exception as e:
-            logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating service account: {e}")
-            raise
-
-    def create_role(self):
-        """
-        Create a role for the MongoDB operator
-        """
-        role = {
-            "apiVersion": "rbac.authorization.k8s.io/v1",
-            "kind": "Role",
-            "metadata": {
-                "name": "mongodb-database",
-                "namespace": self.namespace
-            },
-            "rules": [
-                {
-                    "apiGroups": [""],
-                    "resources": ["secrets"],
-                    "verbs": ["get"]
-                },
-                {
-                    "apiGroups": [""],
-                    "resources": ["pods"],
-                    "verbs": ["patch", "delete", "get"]
-                }
-            ]
-        }
-
-        try:
-            KubernetesAPI.rbac.create_namespaced_role(
-                namespace=self.namespace,
-                body=role
-            )
-            logging.info(f"    ↳ [{self.namespace}/{self.name}] Role created")
-        except ApiException as e:
-            if e.status == 409:
-                logging.warn(f"    ↳ [{self.namespace}/{self.name}] Role already exists")
-            else:
-                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating role: {e}")
-                raise
-        except Exception as e:
-            logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating role: {e}")
-            raise
-
-    def create_role_binding(self):
-        """
-        Create a role binding for the MongoDB operator
-        """
-        role_binding = {
-            "apiVersion": "rbac.authorization.k8s.io/v1",
-            "kind": "RoleBinding",
-            "metadata": {
-                "name": "mongodb-database",
-                "namespace": self.namespace
-            },
-            "roleRef": {
-                "apiGroup": "rbac.authorization.k8s.io",
-                "kind": "Role",
-                "name": "mongodb-database"
-            },
-            "subjects": [
-                {
-                    "kind": "ServiceAccount",
-                    "name": "mongodb-database",
-                    "namespace": self.namespace
-                }
-            ]
-        }
-
-        try:
-            KubernetesAPI.rbac.create_namespaced_role_binding(
-                namespace=self.namespace,
-                body=role_binding
-            )
-            logging.info(f"    ↳ [{self.namespace}/{self.name}] Role binding created")
-        except ApiException as e:
-            if e.status == 409:
-                logging.warn(f"    ↳ [{self.namespace}/{self.name}] Role binding already exists")
-            else:
-                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating role binding: {e}")
-                raise
-        except Exception as e:
-            logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating role binding: {e}")
-            raise
-
-    def create_user(self, password):
-        """
-        Create a user with specific rights in the MongoDB cluster
-
-        Args:
-            password (str): Password
-        """
-        try:
-            secret_name = f"{self.name}-mongo-password"
-
-            # Create password secret
-            secret = {
-                "apiVersion": "v1",
-                "kind": "Secret",
-                "metadata": {
-                    "name": secret_name,
-                    "namespace": self.namespace,
-                },
-                "type": "Opaque",
-                "stringData": {
-                    "password": password
-                }
-            }
-
-            KubernetesAPI.core.create_namespaced_secret(
-                namespace=self.namespace,
-                body=secret
-            )
-
-            logging.info(f"    ↳ [{self.namespace}/{self.name}] User secret created: {secret_name}")
-        except ApiException as e:
-            if e.status == 409:
-                logging.warn(f"    ↳ [{self.namespace}/{self.name}] Secret {secret_name} already exists")
-                KubernetesAPI.core.replace_namespaced_secret(
-                    name=secret_name,
-                    namespace=self.namespace,
-                    body=secret
-                )
-            else:
-                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating user secret: {e}")
-                raise
-
-        except Exception as e:
-            logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating user secret: {e}")
-            raise
-
-    def create_database(self, configuration):
-        """
-        Create a database within the MongoDB cluster.
-        Note: In MongoDB, database creation happens automatically on first use.
+        Create a StatefulSet for the database
 
         Args:
             configuration (dict): Database configuration
         """
-        try:
-            logging.info(f"    ↳ [{self.namespace}/{self.name}] Creating MongoDB cluster {self.name}")
+        pass
 
-            mongo = {
-                "apiVersion": "mongodbcommunity.mongodb.com/v1",
-                "kind": "MongoDBCommunity",
-                "metadata": {
-                    "name": f"{self.name}-mongo",
-                    "namespace": self.namespace
-                },
-                "spec": {
-                    "members": 1,
-                    "version": "8.0.3",
-                    "type": "ReplicaSet",
-                    "security": {
-                        "authentication": {
-                            "modes": ["SCRAM-SHA-256", "SCRAM-SHA-1"]
-                        }
-                    },
-                    "users": [
-                        {
-                            "name": configuration['user'],
-                            "db": configuration['name'],
-                            "passwordSecretRef": {
-                                "name": f"{self.name}-mongo-password"
-                            },
-                            "roles": [
-                                {"name": "readWrite", "db": configuration['name']}
-                            ],
-                            "scramCredentialsSecretName": f"{self.name}-mongo"
-                        }
-                    ],
-                    "additionalMongodConfig": {
-                        "storage": {
-                            "wiredTiger": {
-                                "engineConfig": {
-                                    "journalCompressor": "zlib"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+    @abstractmethod
+    def create_network_policy(self):
+        """
+        Create a NetworkPolicy for the database
+        """
+        pass
 
-            KubernetesAPI.custom.create_namespaced_custom_object(
-                group="mongodbcommunity.mongodb.com",
-                version="v1",
-                namespace=self.namespace,
-                plural="mongodbcommunity",
-                body=mongo
-            )
+    @abstractmethod
+    def create_service(self):
+        """
+        Create a Service for the database
+        """
+        pass
 
-            logging.info(f"    ↳ [{self.namespace}/{self.name}] MongoDB {self.name} created")
-        except ApiException as e:
-            if e.status == 409:
-                logging.warn(f"    ↳ [{self.namespace}/{self.name}] MongoDB cluster {self.name} already exists")
-            else:
-                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating MongoDB cluster: {e}")
-                raise
-        except Exception as e:
-            logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating MongoDB cluster: {e}")
-            raise
-
+    @abstractmethod
     def delete_database(self, configuration):
         """
-        Delete a database within the MongoDB cluster
+        Delete a database within the cluster
+        """
+        pass
+
+    @abstractmethod
+    def delete_secret(self):
+        """
+        Delete a Kubernetes secret for the database
+        """
+        pass
+
+    @abstractmethod
+    def delete_stateful_set(self):
+        """
+        Delete a StatefulSet for the database
+        """
+        pass
+
+    @abstractmethod
+    def delete_network_policy(self):
+        """
+        Delete a NetworkPolicy for the database
+        """
+        pass
+
+    @abstractmethod
+    def delete_service(self):
+        """
+        Delete a Service for the database
+        """
+        pass
+
+    def generate_random_string(self, length=12):
+        """
+        Generate a random string of a specific length
 
         Args:
-            configuration (dict): Database configuration
-        """
-        try:
-            logging.info(f"    ↳ [{self.namespace}/{self.name}] Deleting MongoDB database {configuration['name']}")
-
-            KubernetesAPI.custom.delete_namespaced_custom_object(
-                group="mongodbcommunity.mongodb.com",
-                version="v1",
-                namespace=self.namespace,
-                plural="mongodbcommunity",
-                name=f"{self.name}-mongo"
-            )
-        except ApiException as e:
-            if e.status == 404:
-                logging.warn(f"    ↳ [{self.namespace}/{self.name}] MongoDB database {configuration['name']} not found")
-            else:
-                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting MongoDB database: {e}")
-                raise
-        except Exception as e:
-            logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting MongoDB database: {e}")
-            raise
-
-    def delete_user(self):
-        """
-        Delete a user within the MongoDB cluster
-
-        """
-        try:
-            logging.info(f"    ↳ [{self.namespace}/{self.name}] Deleting MongoDB user")
-
-            secret_name = f"{self.name}-mongo-password"
-            KubernetesAPI.core.delete_namespaced_secret(
-                name=secret_name,
-                namespace=self.namespace
-            )
-        except ApiException as e:
-            if e.status == 404:
-                logging.warn(f"    ↳ [{self.namespace}/{self.name}] MongoDB user not found")
-            else:
-                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting MongoDB user: {e}")
-                raise
-        except Exception as e:
-            logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting MongoDB user: {e}")
-            raise
-
-
-class MariaDB(BaseDatabase):
-    """
-    Specialized manager for MariaDB deployments using MariaDB Operator
-    """
-    def _check_cluster_exists(self):
-        """
-        Verify if a MariaDB resource exists in the namespace
+            length (int): Length of the random string
 
         Returns:
-            bool: True if MariaDB resource exists, False otherwise
+            str: Random string
         """
-        try:
-            mariadb_resources = KubernetesAPI.custom.list_namespaced_custom_resource(
-                group="mariadb.mmontes.io",
-                version="v1alpha1",
-                namespace=self.namespace,
-                plural="mariadbs"
-            )
-            return len(mariadb_resources.items) > 0
-        except Exception as e:
-            logging.error(f"Error checking MariaDB resources: {e}")
-            return False
+        return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
-    def create_database_cluster(self, replicas=3, version="10.11.2"):
+
+class MongoDB(BaseDatabase):
+    def __init__(self, name, namespace):
+        super().__init__(name, namespace)
+        self.type = "mongo"
+
+    def create_secret(self, configuration):
         """
-        Create a MariaDB cluster if it doesn't exist
+        Create a Kubernetes secret for MongoDB
 
         Args:
-            replicas (int): Number of replicas
-            version (str): MariaDB version
+            configuration (dict): MongoDB configuration
         """
-        if self._check_database_exists():
-            logging.info("MariaDB cluster already exists")
-            return
 
-        mariadb_cluster = {
-            "apiVersion": "mariadb.mmontes.io/v1alpha1",
-            "kind": "MariaDB",
-            "metadata": {
-                "name": self.name,
-                "namespace": self.namespace
-            },
-            "spec": {
-                "replicas": replicas,
-                "mariadbVersion": version,
-                "primaryUpdateStrategy": "RollingUpdate",
-                "primary": {},
-                "secondary": {}
-            }
-        }
-
-        try:
-            KubernetesAPI.custom.create_namespaced_custom_resource(
-                group="mariadb.mmontes.io",
-                version="v1alpha1",
-                namespace=self.namespace,
-                plural="mariadbs",
-                body=mariadb_cluster
-            )
-            logging.info(f"MariaDB cluster {self.name} created with {replicas} replicas")
-        except Exception as e:
-            logging.error(f"Error creating MariaDB cluster: {e}")
-            raise
-
-    def create_database(self, database_name):
-        """
-        Create a database within the MariaDB cluster
-
-        Args:
-            database_name (str): Name of the database
-        """
-        database_resource = {
-            "apiVersion": "mariadb.mmontes.io/v1alpha1",
-            "kind": "Database",
-            "metadata": {
-                "name": f"{self.name}-mongo",
-                "namespace": self.namespace
-            },
-            "spec": {
-                "mariaDbRef": {
-                    "name": self.name
-                },
-                "characterSet": "utf8mb4",
-                "collate": "utf8mb4_unicode_ci",
-                "database": database_name
-            }
-        }
-
-        try:
-            KubernetesAPI.custom.create_namespaced_custom_resource(
-                group="mariadb.mmontes.io",
-                version="v1alpha1",
-                namespace=self.namespace,
-                plural="databases",
-                body=database_resource
-            )
-            logging.info(f"Database {database_name} created")
-        except Exception as e:
-            logging.error(f"Error creating database: {e}")
-            raise
-
-    def create_user(self, username, password, database_name, roles=None):
-        """
-        Create a database user with specific permissions
-
-        Args:
-            username (str): Username
-            password (str): Password
-            database_name (str): Target database
-            roles (list, optional): List of roles. Default is ALL PRIVILEGES
-        """
-        secret_name = f"{self.name}-{username}-password"
         secret = {
             "apiVersion": "v1",
             "kind": "Secret",
             "metadata": {
-                "name": secret_name,
+                "name": f"{self.name}-{self.type}-secret",
                 "namespace": self.namespace
             },
-            "type": "Opaque",
             "stringData": {
-                "password": password
+                "MONGODB_ROOT_USER": super().generate_random_string(),
+                "MONGODB_ROOT_PASSWORD": super().generate_random_string(36),
+                "MONGODB_USERNAME": configuration['user'],
+                "MONGODB_PASSWORD": configuration['password'],
+                "MONGODB_DATABASE": configuration['name']
             }
         }
 
@@ -445,45 +141,287 @@ class MariaDB(BaseDatabase):
                 namespace=self.namespace,
                 body=secret
             )
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] MongoDB secret created")
+        except ApiException as e:
+            if e.status == 409:
+                logging.warn(f"    ↳ [{self.namespace}/{self.name}] Secret already exists")
+            else:
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating secret: {e}")
+                raise
 
-            if roles is None:
-                roles = [{"privileges": "ALL PRIVILEGES", "database": database_name}]
+    def create_stateful_set(self, configuration):
+        """
+        Create a StatefulSet for MongoDB
 
-            user_resource = {
-                "apiVersion": "mariadb.mmontes.io/v1alpha1",
-                "kind": "User",
-                "metadata": {
-                    "name": f"{self.name}-{username}",
-                    "namespace": self.namespace
+        Args:
+            configuration (dict): MongoDB configuration
+        """
+
+        statefulset = {
+            "apiVersion": "apps/v1",
+            "kind": "StatefulSet",
+            "metadata": {
+                "name": f"{self.name}-{self.type}",
+                "namespace": self.namespace
+            },
+            "spec": {
+                "serviceName": f"{self.name}-{self.type}",
+                "replicas": 1,
+                "selector": {
+                    "matchLabels": {
+                        "app": self.name,
+                        "type": self.type
+                    }
                 },
-                "spec": {
-                    "mariaDbRef": {
-                        "name": self.name
+                "template": {
+                    "metadata": {
+                        "labels": {
+                            "app": self.name,
+                            "type": self.type
+                        }
                     },
-                    "username": username,
-                    "passwordSecretKeyRef": {
-                        "name": secret_name,
-                        "key": "password"
-                    },
-                    "grants": [
-                        f"{role['privileges']} ON {role['database']}.* TO '{username}'@'%'" 
-                        for role in roles
-                    ]
-                }
+                    "spec": {
+                        "containers": [{
+                            "name": "mongo",
+                            "image": "bitnami/mongodb:7.0.14",
+                            "ports": [
+                                {"containerPort": 27017}
+                            ],
+                            "envFrom": [
+                                {
+                                    "secretRef": {
+                                        "name": f"{self.name}-{self.type}-secret"
+                                    }
+                                }
+                            ],
+                            "volumeMounts": [
+                                {
+                                    "mountPath": "/data/db",
+                                    "name": "mongo-data"
+                                }
+                            ]
+                        }]
+                    }
+                },
+                "volumeClaimTemplates": [
+                    {
+                        "metadata": {
+                            "name": "mongo-data"
+                        },
+                        "spec": {
+                            "accessModes": ["ReadWriteMany"],
+                            "storageClassName": "nfs-client",
+                            "resources": {
+                                "requests": {
+                                    "storage": "5Gi"
+                                }
+                            }
+                        }
+                    }
+                ]
             }
+        }
 
-            KubernetesAPI.custom.create_namespaced_custom_resource(
-                group="mariadb.mmontes.io",
-                version="v1alpha1",
+        try:
+            KubernetesAPI.apps.create_namespaced_stateful_set(
                 namespace=self.namespace,
-                plural="users",
-                body=user_resource
+                body=statefulset
             )
-            logging.info(f"User {username} created successfully")
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] StatefulSet {self.name} created")
+        except ApiException as e:
+            if e.status == 409:
+                logging.warn(f"    ↳ [{self.namespace}/{self.name}] StatefulSet already exists")
+            else:
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating StatefulSet: {e}")
+                raise
 
-        except Exception as e:
-            logging.error(f"Error creating user: {e}")
-            raise
+    def create_network_policy(self):
+        """
+        Create a NetworkPolicy for MongoDB
+        """
+
+        network_policy = {
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "NetworkPolicy",
+            "metadata": {
+                "name": f"{self.name}-{self.type}",
+                "namespace": self.namespace
+            },
+            "spec": {
+                "podSelector": {
+                    "matchLabels": {
+                        "app": self.name,
+                        "type": self.type
+                    }
+                },
+                "ingress": [
+                    {
+                        "from": [
+                            {
+                                "podSelector": {
+                                    "matchLabels": {
+                                        "app": self.name,
+                                        "type": "container"
+                                    }
+                                }
+                            }
+                        ],
+                        "ports": [
+                            {
+                                "protocol": "TCP",
+                                "port": 27017
+                            }
+                        ]
+                    }
+                ],
+                "policyTypes": ["Ingress"],
+            }
+        }
+
+        try:
+            KubernetesAPI.networking.create_namespaced_network_policy(
+                namespace=self.namespace,
+                body=network_policy
+            )
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] NetworkPolicy for allow access created")
+        except ApiException as e:
+            if e.status == 409:
+                logging.warn(f"    ↳ [{self.namespace}/{self.name}] NetworkPolicy already exists")
+            else:
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating NetworkPolicy: {e}")
+                raise
+
+    def create_service(self):
+        """
+        Create a Service for MongoDB
+        """
+
+        service = {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "name": f"{self.name}-{self.type}",
+                "namespace": self.namespace
+            },
+            "spec": {
+                "selector": {
+                    "app": self.name,
+                    "type": self.type
+                },
+                "ports": [{"protocol": "TCP", "port": 27017, "targetPort": 27017}],
+                "clusterIP": "None"
+            }
+        }
+
+        try:
+            KubernetesAPI.core.create_namespaced_service(
+                namespace=self.namespace,
+                body=service
+            )
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] MongoDB service created")
+        except ApiException as e:
+            if e.status == 409:
+                logging.warn(f"    ↳ [{self.namespace}/{self.name}] Service already exists")
+            else:
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating Service: {e}")
+                raise
+
+    def create_database(self, configuration):
+        """
+        Create a MongoDB deployment
+
+        Args:
+            configuration (dict): Database configuration
+        """
+
+        self.create_secret(configuration)
+        self.create_stateful_set(configuration)
+        self.create_network_policy()
+        self.create_service()
+
+    def delete_secret(self):
+        """
+        Delete a Kubernetes secret for MongoDB
+        """
+
+        try:
+            KubernetesAPI.core.delete_namespaced_secret(
+                name=f"{self.name}-{self.type}-secret",
+                namespace=self.namespace
+            )
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] MongoDB secret deleted")
+        except ApiException as e:
+            if e.status == 404:
+                logging.warn(f"    ↳ [{self.namespace}/{self.name}] Secret not found")
+            else:
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting secret: {e}")
+                raise
+
+    def delete_stateful_set(self):
+        """
+        Delete a StatefulSet for MongoDB
+        """
+
+        try:
+            KubernetesAPI.apps.delete_namespaced_stateful_set(
+                name=f"{self.name}-{self.type}",
+                namespace=self.namespace
+            )
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] StatefulSet {self.name} deleted")
+        except ApiException as e:
+            if e.status == 404:
+                logging.warn(f"    ↳ [{self.namespace}/{self.name}] StatefulSet not found")
+            else:
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting StatefulSet: {e}")
+                raise
+
+    def delete_network_policy(self):
+        """
+        Delete a NetworkPolicy for MongoDB
+        """
+
+        try:
+            KubernetesAPI.networking.delete_namespaced_network_policy(
+                name=f"{self.name}-{self.type}",
+                namespace=self.namespace
+            )
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] NetworkPolicy for allow access deleted")
+        except ApiException as e:
+            if e.status == 404:
+                logging.warn(f"    ↳ [{self.namespace}/{self.name}] NetworkPolicy not found")
+            else:
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting NetworkPolicy: {e}")
+                raise
+
+    def delete_service(self):
+        """
+        Delete a Service for MongoDB
+        """
+
+        try:
+            KubernetesAPI.core.delete_namespaced_service(
+                name=f"{self.name}-{self.type}",
+                namespace=self.namespace
+            )
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] MongoDB service deleted")
+        except ApiException as e:
+            if e.status == 404:
+                logging.warn(f"    ↳ [{self.namespace}/{self.name}] Service not found")
+            else:
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting Service: {e}")
+                raise
+
+    def delete_database(self, configuration):
+        """
+        Delete a database deployment
+
+        Args:
+            configuration (dict): Database configuration
+        """
+        self.delete_secret()
+        self.delete_stateful_set()
+        self.delete_network_policy()
+        self.delete_service()
 
 
 class Databases:
@@ -555,21 +493,16 @@ class Databases:
 
         if configuration['provider'].lower() == 'mongodb':
             manager = MongoDB(self.name, self.namespace)
-
-            manager.create_service_account()
-            manager.create_role()
-            manager.create_role_binding()
-
-            manager.create_user(configuration['password'])
             manager.create_database(configuration)
-        elif configuration['provider'].lower() == 'mariadb':
-            manager = MariaDB(self.name, self.namespace)
-            manager.create_database_cluster()
 
-            db = f"{self.name}-{configuration['db']}"
+        # elif configuration['provider'].lower() == 'mariadb':
+        #     manager = MariaDB(self.name, self.namespace)
+        #     manager.create_database_cluster()
 
-            manager.create_database(db)
-            manager.create_user(configuration['user'], configuration['password'], db)
+        #     db = f"{self.name}-{configuration['db']}"
+
+        #     manager.create_database(db)
+        #     manager.create_user(configuration['user'], configuration['password'], db)
         else:
             raise ValueError(f"Unsupported database provider: {configuration['provider']}")
 
@@ -588,7 +521,6 @@ class Databases:
         if configuration['provider'].lower() == 'mongodb':
             manager = MongoDB(self.name, self.namespace)
             manager.delete_database(configuration)
-            manager.delete_user()
 
             # Ajoutez votre logique de suppression ici
         elif configuration['provider'].lower() == 'mariadb':
