@@ -184,16 +184,24 @@ class Deployment:
                 metadata=client.V1ObjectMeta(
                     name=self.name,
                     namespace=self.namespace,
-                    labels={"app": self.name}
+                    labels={
+                        "app": self.name,
+                    }
                 ),
                 spec=client.V1DeploymentSpec(
                     replicas=1,
                     selector=client.V1LabelSelector(
-                        match_labels={"app": self.name}
+                        match_labels={
+                            "app": self.name,
+                            "type": "container"
+                        }
                     ),
                     template=client.V1PodTemplateSpec(
                         metadata=client.V1ObjectMeta(
-                            labels={"app": self.name}
+                            labels={
+                                "app": self.name,
+                                "type": "container"
+                            }
                         ),
                         spec=client.V1PodSpec(
                             containers=container_specs,
