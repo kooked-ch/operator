@@ -2,6 +2,8 @@ import logging
 from kubernetes import client
 from kubernetes.client.exceptions import ApiException
 from src.KubernetesAPI import KubernetesAPI
+import requests
+import yaml
 import re
 
 
@@ -102,6 +104,89 @@ class Domain:
         """
         return f"{domain.replace('.', '-')}-tls"
 
+    def update_prometheus_monitoring(self):
+        """
+        Update Prometheus monitoring configuration for the domain.
+        """
+        try:
+            all_apps = KubernetesAPI.custom.list_cluster_custom_object(
+                group="kooked.ch",
+                version="v1",
+                plural="kookedapps"
+            )
+
+            domains = [
+                f"https://{domain['url']}"
+                for app in all_apps['items']
+                if 'spec' in app and 'domains' in app['spec']
+                for domain in app['spec']['domains']
+            ]
+
+            print(f"Extracted domains: {domains}")
+
+            prometheus_config = {
+                "global": {
+                    "scrape_interval": "15s"
+                },
+                "scrape_configs": [
+                    {
+                        "job_name": "blackbox",
+                        "metrics_path": "/metrics",
+                        "static_configs": [
+                            {"targets": ["127.0.0.1:9115"]}
+                        ]
+                    },
+                    {
+                        "job_name": "blackbox-http",
+                        "metrics_path": "/probe",
+                        "params": {
+                            "module": ["http_2xx"]
+                        },
+                        "static_configs": [
+                            {"targets": domains}
+                        ],
+                        "relabel_configs": [
+                            {"source_labels": ["__address__"], "target_label": "__param_target"},
+                            {"source_labels": ["__param_target"], "target_label": "instance"},
+                            {"target_label": "__address__", "replacement": "127.0.0.1:9115"}
+                        ]
+                    }
+                ]
+            }
+
+            prometheus_yaml = yaml.dump(prometheus_config, default_flow_style=False)
+
+            config_map = client.V1ConfigMap(
+                api_version="v1",
+                kind="ConfigMap",
+                metadata=client.V1ObjectMeta(
+                    name="kookedapps-prometheus-config",
+                    namespace="monitoring"
+                ),
+                data={
+                    "prometheus.yml": prometheus_yaml
+                }
+            )
+
+            KubernetesAPI.core.replace_namespaced_config_map(
+                name="kookedapps-prometheus-config",
+                namespace="monitoring",
+                body=config_map
+            )
+
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Updated Prometheus monitoring configuration")
+
+            try:
+                # Reload Prometheus
+                requests.post("http://kookedapps-prometheus.monitoring:9090/-/reload")
+            except requests.RequestException as e:
+                logging.error(f"Error reloading Prometheus: {e}")
+
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Updated Prometheus monitoring configuration")
+
+        except ApiException as e:
+            logging.error(f" ↳ [{self.namespace}/{self.name}] Error updating Prometheus monitoring: {e}")
+
     def create_domain(self, domain):
         """
         Enhanced domain creation with more robust error handling and logging.
@@ -128,7 +213,8 @@ class Domain:
             self.create_network_policy(service_name),
             self.create_https_middleware(domain_name),
             self.create_http_ingress(service_name, domain_name, domain),
-            self.create_https_ingress(service_name, domain_name, domain)
+            self.create_https_ingress(service_name, domain_name, domain),
+            self.update_prometheus_monitoring()
 
         except ValueError as e:
             logging.error(f"    ↳ [{self.namespace}/{self.name}] Error in domain creation: {e}", exc_info=True)
