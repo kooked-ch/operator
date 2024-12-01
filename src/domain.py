@@ -123,10 +123,6 @@ class Domain:
             domain_name = self.sanitize_domain_name(domain['url'])
             service_name = self.name
 
-            logging.info(f"    ↳ [{self.namespace}/{self.name}] Creating domain resources for {domain['url']}")
-            logging.info(f"    ↳ [{self.namespace}/{self.name}] Domain name: {domain_name}")
-            logging.info(f"    ↳ [{self.namespace}/{self.name}] Service name: {service_name}")
-
             self.create_certificate(domain, domain_name),
             self.create_service(service_name, domain),
             self.create_https_middleware(domain_name),
