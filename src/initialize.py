@@ -271,6 +271,38 @@ class Initialize:
             logging.error(f"Error creating Prometheus deployment: {e}")
             return
 
+        service = {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "name": "kookedapps-prometheus",
+                "namespace": "monitoring",
+            },
+            "spec": {
+                "selector": {
+                    "app": "kookedapps-prometheus",
+                },
+                "ports": [
+                    {
+                        "port": 9090,
+                        "targetPort": 9090,
+                    },
+                ],
+                "type": "ClusterIP"
+            },
+        }
+
+        try:
+            KubernetesAPI.core.create_namespaced_service(
+                namespace="monitoring",
+                body=service
+            )
+        except ApiException as e:
+            if e.status == 409:
+                logging.info("Service 'kookedapps-prometheus' already exists")
+            else:
+                logging.error(f"Error creating Service 'kookedapps-prometheus': {e}")
+
     @classmethod
     def _create_config_map(cls, name: str, namespace: str, data: Dict[str, str]) -> None:
         """
@@ -307,79 +339,131 @@ class Initialize:
             "metadata": {
                 "name": "kookedapps-prometheus",
                 "namespace": "monitoring",
+                "labels": {
+                    "app": "kookedapps-prometheus"
+                }
             },
             "spec": {
                 "replicas": 1,
                 "selector": {
                     "matchLabels": {
-                        "app": "prometheus",
-                    },
+                        "app": "kookedapps-prometheus"
+                    }
                 },
                 "template": {
                     "metadata": {
                         "labels": {
-                            "app": "prometheus",
-                        },
+                            "app": "kookedapps-prometheus"
+                        }
                     },
                     "spec": {
                         "containers": [
                             {
                                 "name": "prometheus",
-                                "image": "prom/prometheus",
+                                "image": "prom/prometheus:latest",
+                                "imagePullPolicy": "IfNotPresent",
                                 "ports": [
                                     {
                                         "containerPort": 9090,
-                                    },
+                                        "name": "web"
+                                    }
                                 ],
                                 "volumeMounts": [
                                     {
                                         "name": "prometheus-config",
                                         "mountPath": "/etc/prometheus",
+                                        "readOnly": True
                                     },
                                     {
-                                        "name": "targets",
-                                        "mountPath": "/etc/targets",
-                                    },
+                                        "name": "prometheus-data",
+                                        "mountPath": "/prometheus"
+                                    }
                                 ],
+                                "resources": {
+                                    "requests": {
+                                        "cpu": "100m",
+                                        "memory": "256Mi"
+                                    },
+                                    "limits": {
+                                        "cpu": "500m",
+                                        "memory": "512Mi"
+                                    }
+                                },
+                                "args": [
+                                    "--config.file=/etc/prometheus/prometheus.yml",
+                                    "--storage.tsdb.path=/prometheus",
+                                    "--web.console.libraries=/etc/prometheus/console_libraries",
+                                    "--web.console.templates=/etc/prometheus/consoles",
+                                    "--web.enable-lifecycle"
+                                ],
+                                "readinessProbe": {
+                                    "httpGet": {
+                                        "path": "/-/ready",
+                                        "port": 9090
+                                    },
+                                    "initialDelaySeconds": 10,
+                                    "periodSeconds": 10
+                                },
+                                "livenessProbe": {
+                                    "httpGet": {
+                                        "path": "/-/healthy",
+                                        "port": 9090
+                                    },
+                                    "initialDelaySeconds": 30,
+                                    "periodSeconds": 15
+                                }
                             },
                             {
                                 "name": "blackbox-exporter",
-                                "image": "prom/blackbox-exporter",
+                                "image": "prom/blackbox-exporter:latest",
+                                "imagePullPolicy": "IfNotPresent",
                                 "ports": [
                                     {
                                         "containerPort": 9115,
-                                    },
+                                        "name": "blackbox"
+                                    }
                                 ],
+                                "resources": {
+                                    "requests": {
+                                        "cpu": "50m",
+                                        "memory": "64Mi"
+                                    },
+                                    "limits": {
+                                        "cpu": "200m",
+                                        "memory": "128Mi"
+                                    }
+                                }
                             }
                         ],
                         "volumes": [
                             {
                                 "name": "prometheus-config",
                                 "configMap": {
-                                    "name": "kookedapps-prometheus-config",
-                                },
+                                    "name": "kookedapps-prometheus-config"
+                                }
                             },
                             {
-                                "name": "targets",
-                                "configMap": {
-                                    "name": "kookedapps-targets",
-                                },
+                                "name": "prometheus-data",
+                                "emptyDir": {}
                             }
-                        ],
-                    },
-                },
-            },
+                        ]
+                    }
+                }
+            }
         }
+
+        # Create the deployment
         try:
             KubernetesAPI.apps.create_namespaced_deployment(
                 namespace="monitoring",
                 body=prometheus_deployment
             )
+            logging.info("Prometheus deployment created successfully")
         except ApiException as e:
             if e.status == 409:
                 logging.info("Prometheus deployment already exists")
             else:
-                raise
+                logging.error(f"Error creating Prometheus deployment: {e}")
 
     @classmethod
     def _manage_cluster_role_binding(cls, cluster_role_binding: Dict[str, Any]) -> None:
