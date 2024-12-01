@@ -14,6 +14,7 @@ def on_kopf_startup(**kwargs):
     Initialize.ensure_crd_exists()
     Initialize.create_cluster_issuer()
     Initialize.ensure_traefik_rbac()
+    Initialize.create_monitoring()
 
 
 @kopf.on.create('kooked.ch', 'v1', 'kookedapps', retries=3)
