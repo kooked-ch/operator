@@ -210,6 +210,12 @@ class Deployment:
 
             logging.info(f"    ↳ [{self.namespace}/{self.name}] Created deployment with {len(validated_containers)} containers")
 
+        except ApiException as e:
+            if e.status == 409:
+                logging.info(f"    ↳ [{self.namespace}/{self.name}] Deployment already exists")
+            else:
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating deployment: {e}")
+                raise ValueError("Error creating deployment")
         except Exception as e:
             logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating deployment: {e}", exc_info=True)
             raise ValueError("Error creating deployment")
