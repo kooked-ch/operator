@@ -125,6 +125,7 @@ class Domain:
 
             self.create_certificate(domain, domain_name),
             self.create_service(service_name, domain),
+            self.create_network_policy(service_name),
             self.create_https_middleware(domain_name),
             self.create_http_ingress(service_name, domain_name, domain),
             self.create_https_ingress(service_name, domain_name, domain)
@@ -197,7 +198,6 @@ class Domain:
         """
         service_ports = []
         try:
-            # Try to read existing service
             service = KubernetesAPI.core.read_namespaced_service(
                 namespace=self.namespace,
                 name=service_name
@@ -240,7 +240,10 @@ class Domain:
                 labels={"app": self.name}
             ),
             spec=client.V1ServiceSpec(
-                selector={"app": self.name},
+                selector={
+                    "app": self.name,
+                    "type": "container"
+                },
                 ports=service_ports,
                 type="ClusterIP"
             )
@@ -262,6 +265,75 @@ class Domain:
                 logging.info(f"    ↳ [{self.namespace}/{self.name}] Created service")
         except ApiException as e:
             logging.error(f"Error creating/updating service: {e}")
+
+    def create_network_policy(self, service_name):
+        """
+        Create a network policy for the domain.
+
+        Args:
+            service_name (str): Service name
+        """
+
+        service = KubernetesAPI.core.read_namespaced_service(
+            namespace=self.namespace,
+            name=service_name
+        )
+
+        network_policy = {
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "NetworkPolicy",
+            "metadata": {
+                "name": f"{service_name}-web",
+                "namespace": self.namespace
+            },
+            "spec": {
+                "podSelector": {
+                    "matchLabels": {
+                        "app": self.name,
+                        "type": "container"
+                    }
+                },
+                "policyTypes": ["Ingress"],
+                "ingress": [
+                    {
+                        "from": [
+                            {
+                                "namespaceSelector": {
+                                    "matchLabels": {
+                                        "kubernetes.io/metadata.name": "kube-system"
+                                    }
+                                }
+                            },
+                            {
+                               "podSelector": {
+                                    "matchLabels": {
+                                        "app.kubernetes.io/name": "traefik"
+                                    }
+                                }
+                            }
+                        ],
+                        "ports": [
+                            {
+                                "port": port.port
+                            }
+                            for port in service.spec.ports
+                        ]
+                    }
+                ]
+            }
+        }
+
+        try:
+            KubernetesAPI.networking.create_namespaced_network_policy(
+                namespace=self.namespace,
+                body=network_policy
+            )
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Created network policy allowing inbound traffic for app {self.name}")
+        except ApiException as e:
+            if e.status == 409:
+                logging.info(f"    ↳ [{self.namespace}/{self.name}] Network policy already exists")
+            else:
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating network policy: {e}")
 
     def create_https_middleware(self, domain_name):
         """
@@ -320,7 +392,8 @@ class Domain:
             "kind": "IngressRoute",
             "metadata": {
                 "name": f"{domain_name}-http",
-                "namespace": self.namespace
+                "namespace": self.namespace,
+                "app": self.name
             },
             "spec": {
                 "entryPoints": ["web"],
@@ -372,7 +445,8 @@ class Domain:
             "kind": "IngressRoute",
             "metadata": {
                 "name": f"{domain_name}-https",
-                "namespace": self.namespace
+                "namespace": self.namespace,
+                "app": self.name
             },
             "spec": {
                 "entryPoints": ["websecure"],
@@ -425,6 +499,7 @@ class Domain:
                 self.delete_http_ingress(domain_name),
                 self.delete_https_middleware(domain_name),
                 self.delete_service(service_name, domain),
+                self.delete_network_policy(service_name),
                 # self.delete_certificate(domain_name)
             ]
 
@@ -436,6 +511,29 @@ class Domain:
         except ApiException as e:
             if e.status != 404:
                 logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting domain resources: {e}")
+
+    def delete_network_policy(self, service_name):
+        """
+        Delete network policy for the domain.
+
+        Args:
+            namespace (str): Kubernetes namespace
+            name (str): Resource name
+        """
+        try:
+            KubernetesAPI.networking.delete_namespaced_network_policy(
+                namespace=self.namespace,
+                name=f"{service_name}-web"
+            )
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Deleted network policy")
+            return True
+        except ApiException as e:
+            if e.status == 404:
+                logging.info(f"    ↳ [{self.namespace}/{self.name}] Network policy not found")
+                return True
+            else:
+                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting network policy: {e}")
+                return False
 
     def delete_http_ingress(self, domain_name):
         """
