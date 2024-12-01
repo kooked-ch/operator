@@ -8,6 +8,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         'kopf==1.37.2',
-        'kubernetes==31.0.0'
+        'kubernetes==31.0.0',
+        "requests==2.26.0",
     ],
 )
