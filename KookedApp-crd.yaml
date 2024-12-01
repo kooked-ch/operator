@@ -10,6 +10,7 @@ spec:
     kind: KookedApp
     shortNames:
       - kapp
+      - kookedapp
   scope: Namespaced
   versions:
     - name: v1
