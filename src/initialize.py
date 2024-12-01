@@ -208,6 +208,180 @@ class Initialize:
                 raise
 
     @classmethod
+    def create_monitoring(cls) -> None:
+        """
+        Create a monitoring setup for Prometheus and related components.
+        """
+        logging.info("Creating monitoring")
+
+        try:
+            KubernetesAPI.core.create_namespace(
+                body={"apiVersion": "v1", "kind": "Namespace", "metadata": {"name": "monitoring"}}
+            )
+        except ApiException as e:
+            if e.status == 409:
+                logging.info("Namespace 'monitoring' already exists")
+            else:
+                logging.error(f"Error creating namespace 'monitoring': {e}")
+                return
+
+        try:
+            cls._create_config_map(
+                name="kookedapps-prometheus-config",
+                namespace="monitoring",
+                data={
+                    "prometheus.yml": """
+                    global:
+                      scrape_interval: 15s
+
+                    scrape_configs:
+                      - job_name: blackbox
+                        metrics_path: /metrics
+                        static_configs:
+                          - targets:
+                              - 127.0.0.1:9115
+
+                      - job_name: blackbox-http
+                        metrics_path: /probe
+                        params:
+                          module: [http_2xx]
+                        static_configs:
+                            - targets:
+                                - https://kooked.ch
+                        relabel_configs:
+                          - source_labels: [__address__]
+                            target_label: __param_target
+                          - source_labels: [__param_target]
+                            target_label: instance
+                          - target_label: __address__
+                            replacement: 127.0.0.1:9115
+                    """
+                }
+            )
+        except ApiException as e:
+            if e.status == 409:
+                logging.info("ConfigMap 'kookedapps-prometheus-config' already exists")
+            else:
+                logging.error(f"Error creating ConfigMap 'kookedapps-prometheus-config': {e}")
+                return
+
+        try:
+            cls._create_prometheus_deployment()
+        except ApiException as e:
+            logging.error(f"Error creating Prometheus deployment: {e}")
+            return
+
+    @classmethod
+    def _create_config_map(cls, name: str, namespace: str, data: Dict[str, str]) -> None:
+        """
+        Create a ConfigMap in the specified namespace.
+
+        Args:
+            name: Name of the ConfigMap
+            namespace: Namespace where the ConfigMap should be created
+            data: Data for the ConfigMap
+        """
+        config_map = {
+            "apiVersion": "v1",
+            "kind": "ConfigMap",
+            "metadata": {
+                "name": name,
+                "namespace": namespace,
+            },
+            "data": data,
+        }
+        KubernetesAPI.core.create_namespaced_config_map(
+            namespace=namespace,
+            body=config_map
+        )
+        logging.info(f"ConfigMap '{name}' created successfully")
+
+    @classmethod
+    def _create_prometheus_deployment(cls) -> None:
+        """
+        Create the Prometheus deployment in the 'monitoring' namespace.
+        """
+        prometheus_deployment = {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": {
+                "name": "kookedapps-prometheus",
+                "namespace": "monitoring",
+            },
+            "spec": {
+                "replicas": 1,
+                "selector": {
+                    "matchLabels": {
+                        "app": "prometheus",
+                    },
+                },
+                "template": {
+                    "metadata": {
+                        "labels": {
+                            "app": "prometheus",
+                        },
+                    },
+                    "spec": {
+                        "containers": [
+                            {
+                                "name": "prometheus",
+                                "image": "prom/prometheus",
+                                "ports": [
+                                    {
+                                        "containerPort": 9090,
+                                    },
+                                ],
+                                "volumeMounts": [
+                                    {
+                                        "name": "prometheus-config",
+                                        "mountPath": "/etc/prometheus",
+                                    },
+                                    {
+                                        "name": "targets",
+                                        "mountPath": "/etc/targets",
+                                    },
+                                ],
+                            },
+                            {
+                                "name": "blackbox-exporter",
+                                "image": "prom/blackbox-exporter",
+                                "ports": [
+                                    {
+                                        "containerPort": 9115,
+                                    },
+                                ],
+                            }
+                        ],
+                        "volumes": [
+                            {
+                                "name": "prometheus-config",
+                                "configMap": {
+                                    "name": "kookedapps-prometheus-config",
+                                },
+                            },
+                            {
+                                "name": "targets",
+                                "configMap": {
+                                    "name": "kookedapps-targets",
+                                },
+                            }
+                        ],
+                    },
+                },
+            },
+        }
+        try:
+            KubernetesAPI.apps.create_namespaced_deployment(
+                namespace="monitoring",
+                body=prometheus_deployment
+            )
+        except ApiException as e:
+            if e.status == 409:
+                logging.info("Prometheus deployment already exists")
+            else:
+                raise
+
+    @classmethod
     def _manage_cluster_role_binding(cls, cluster_role_binding: Dict[str, Any]) -> None:
         """
         Manage the Traefik ClusterRoleBinding, creating or updating as needed.
