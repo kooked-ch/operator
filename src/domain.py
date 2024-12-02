@@ -40,16 +40,15 @@ class Domain:
         domain["url"] = re.sub(r'^https?://', '', domain["url"].lower())
         domain["url"] = re.sub(r'/$', '', domain["url"])
 
-        # Validate domain format
-        if not re.match(r'^[a-zA-Z0-9-]+\.[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', domain["url"]):
+        if not re.match(r'^(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$', domain["url"]):
             raise ValueError(f"Invalid domain URL format: {domain['url']}")
 
-        # Optional port validation
         if 'port' in domain:
             if not isinstance(domain['port'], int) or domain['port'] <= 0 or domain['port'] > 65535:
                 raise ValueError(f"Invalid port number: {domain['port']}")
 
         return domain
+
 
     def sanitize_domain_name(self, domain):
         """
@@ -121,8 +120,6 @@ class Domain:
                 if 'spec' in app and 'domains' in app['spec']
                 for domain in app['spec']['domains']
             ]
-
-            print(f"Extracted domains: {domains}")
 
             prometheus_config = {
                 "global": {
