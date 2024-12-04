@@ -196,7 +196,7 @@ class MongoDB(BaseDatabase):
                             ],
                             "volumeMounts": [
                                 {
-                                    "mountPath": "/data/db",
+                                    "mountPath": "/bitnami/mongodb/data/db",
                                     "name": "mongo-data"
                                 }
                             ]
