@@ -57,13 +57,12 @@ def on_delete_app(spec, name, namespace, **kwargs):
         operator.delete_app(spec)
     except ValueError as e:
         raise kopf.TemporaryError(
-            e, delay=120, backoff=2
+            e, delay=120,
         )
     except Exception as e:
         logging.error(f"[{namespace}/{name}] Error during app creation: {e}")
         raise kopf.TemporaryError(
             "An unexpected error occurred when creating the application.",
-            backoff=0
         )
 
 
