@@ -6,9 +6,4 @@ setup(
     description='Kopf operator for managing and deploying Kooked applications',
     url='https://github.com/kooked-ch/operator',
     packages=find_packages(),
-    install_requires=[
-        'kopf==1.37.2',
-        'kubernetes==31.0.0',
-        "requests==2.32.3",
-    ],
 )
