@@ -49,7 +49,6 @@ class Domain:
 
         return domain
 
-
     def sanitize_domain_name(self, domain):
         """
         Sanitize domain name for use in Kubernetes resource names.
