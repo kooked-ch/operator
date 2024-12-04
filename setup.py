@@ -9,6 +9,6 @@ setup(
     install_requires=[
         'kopf==1.37.2',
         'kubernetes==31.0.0',
-        "requests==2.26.0",
+        "requests==2.32.3",
     ],
 )
