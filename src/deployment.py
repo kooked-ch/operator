@@ -228,6 +228,118 @@ class Deployment:
             logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating deployment: {e}", exc_info=True)
             raise ValueError("Error creating deployment")
 
+    def update_deployment(self, containers):
+        """
+        Update Kubernetes Deployments for multiple containers.
+
+        Args:
+            containers (list): List of container configurations
+
+        Returns:
+            bool: True if deployment update successful, False otherwise
+        """
+        try:
+
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Creating deployment")
+
+            validated_containers = self.validate_containers(containers)
+
+            container_specs = []
+            volumes = []
+            volumes_names = []
+
+            for container in validated_containers:
+                for volume in container.get('volumes', []):
+                    if volume['name'] not in volumes_names:
+                        self.create_pvc(f"{self.name}-{volume['name']}", '5Gi')
+                        volumes_names.append(volume['name'])
+                        volumes.append(client.V1Volume(
+                            name=f"{self.name}-{volume['name']}",
+                            persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(
+                                claim_name=f"{self.name}-{volume['name']}"
+                            )
+                        ))
+
+            for container in validated_containers:
+                container_spec = client.V1Container(
+                    name=container['name'],
+                    image=container['image'],
+                    env=[
+                        client.V1EnvVar(name=env['name'], value=env['value'])
+                        for env in container.get('env', [])
+                    ],
+                    ports=[
+                        client.V1ContainerPort(container_port=int(port))
+                        for port in container.get('ports', [])
+                    ],
+                    volume_mounts=[
+                        client.V1VolumeMount(
+                            name=f"{self.name}-{volume['name']}",
+                            mount_path=volume['mountPath']
+                        )
+                        for volume in container.get('volumes', [])
+                    ],
+                    resources=client.V1ResourceRequirements(
+                        requests={
+                            "cpu": "100m",
+                            "memory": "128Mi"
+                        },
+                        limits={
+                            "cpu": "500m",
+                            "memory": "512Mi"
+                        }
+                    )
+                )
+                container_specs.append(container_spec)
+
+            deployment = client.V1Deployment(
+                api_version="apps/v1",
+                kind="Deployment",
+                metadata=client.V1ObjectMeta(
+                    name=self.name,
+                    namespace=self.namespace,
+                    labels={
+                        "app": self.name,
+                    }
+                ),
+                spec=client.V1DeploymentSpec(
+                    replicas=1,
+                    selector=client.V1LabelSelector(
+                        match_labels={
+                            "app": self.name,
+                            "type": "container"
+                        }
+                    ),
+                    template=client.V1PodTemplateSpec(
+                        metadata=client.V1ObjectMeta(
+                            labels={
+                                "app": self.name,
+                                "type": "container"
+                            }
+                        ),
+                        spec=client.V1PodSpec(
+                            containers=container_specs,
+                            volumes=volumes
+                        )
+                    )
+                )
+            )
+
+            KubernetesAPI.apps.replace_namespaced_deployment(
+                namespace=self.namespace,
+                name=self.name,
+                body=deployment
+            )
+
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Updated deployment with {len(validated_containers)} containers")
+
+        except ApiException as e:
+            logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating deployment: {e}")
+            raise ValueError("Error creating deployment")
+        except Exception as e:
+            logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating deployment: {e}", exc_info=True)
+            raise ValueError("Error creating deployment")
+
     def delete_deployment(self):
         """
         Delete the Kubernetes Deployment and associated resources.
