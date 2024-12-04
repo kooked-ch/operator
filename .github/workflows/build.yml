@@ -38,6 +38,29 @@ jobs:
                   echo "version: $version"
                   echo "version=$version" >> $GITHUB_ENV
 
+                  - name: Create Git tag
+                  run: |
+                    tag_response=$(curl -s -X POST https://api.github.com/repos/${{ github.repository }}/git/tags \
+                    -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                    -H "Accept: application/vnd.github.v3+json" \
+                    -d '{
+                          "tag": "${{ env.version }}",
+                          "message": "Release version ${{ env.version }}",
+                          "object": "${{ github.sha }}",
+                          "type": "commit"
+                        }')
+                    tag_sha=$(echo $tag_response | jq -r .sha)
+                    echo "Tag SHA: $tag_sha"
+
+                    # Create the tag reference
+                    curl -s -X POST https://api.github.com/repos/${{ github.repository }}/git/refs \
+                    -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                    -H "Accept: application/vnd.github.v3+json" \
+                    -d '{
+                          "ref": "refs/tags/${{ env.version }}",
+                          "sha": "'"${tag_sha}"'"
+                        }'
+
             - name: Check and create release
               id: check_release
               run: |
