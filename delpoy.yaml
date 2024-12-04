@@ -32,7 +32,7 @@ rules:
 
   # Custom resource permissions
   - apiGroups: ["kooked.ch"]
-    resources: ["kookeddeployments"]
+    resources: ["kookedapps"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
   # RBAC permissions
@@ -61,8 +61,24 @@ rules:
 
   # Status permissions
   - apiGroups: ["kooked.ch"]
-    resources: ["kookeddeployments/status"]
+    resources: ["kookedapps/status"]
     verbs: ["get", "patch", "update"]
+
+  # Storage permissions
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Network policy permissions
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # StatefulSet permissions
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
