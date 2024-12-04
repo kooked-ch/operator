@@ -419,7 +419,7 @@ class MongoDB(BaseDatabase):
             configuration (dict): Database configuration
         """
         self.delete_secret()
-        self.delete_stateful_set()
+        # self.delete_stateful_set() Temporarily disabled
         self.delete_network_policy()
         self.delete_service()
 
