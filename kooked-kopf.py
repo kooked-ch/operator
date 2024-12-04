@@ -1,11 +1,12 @@
 import kopf
 import kopf.cli
 import logging
-from kubernetes.client.exceptions import ApiException
+import json
 from src.initialize import Initialize
 from src.domain import Domain
 from src.deployment import Deployment
 from src.databases import Databases
+from src.KubernetesAPI import KubernetesAPI
 import sys
 
 
@@ -37,16 +38,15 @@ def on_create_app(spec, name, namespace, **kwargs):
 def on_update_app(spec, name, namespace, **kwargs):
     operator = KookedAppOperator(name, namespace, spec)
     try:
-        operator.update_kookeddeployment(spec)
+        operator.update_app(spec)
     except ValueError as e:
         raise kopf.TemporaryError(
-            e, delay=120, backoff=2
+            e, delay=120
         )
     except Exception as e:
         logging.error(f"[{namespace}/{name}] Error during app creation: {e}")
         raise kopf.TemporaryError(
             "An unexpected error occurred when creating the application.",
-            backoff=0
         )
 
 
@@ -117,9 +117,63 @@ class KookedAppOperator:
 
         logging.info(f" ↳ [{self.namespace}/{self.name}] KookedApp created successfully")
 
-    def update_kookeddeployment(self, spec):
-        logging.info(f"[{self.namespace}/{self.name}] Updating KookedApp")
-        # Ajoutez votre logique de mise à jour ici
+    def update_app(self, spec):
+        try:
+            logging.info(f"[{self.namespace}/{self.name}] Updating KookedApp")
+
+            app = KubernetesAPI.custom.get_namespaced_custom_object(
+                group="kooked.ch",
+                version="v1",
+                namespace=self.namespace,
+                plural="kookedapps",
+                name=self.name
+            )
+
+            current_spec = json.loads(app["metadata"]["annotations"].get("kopf.zalando.org/last-handled-configuration", None)).get("spec", {})
+
+            domains = spec.get("domains", [])
+            current_domains = current_spec.get("domains", [])
+            containers = spec.get("containers", [])
+            current_containers = current_spec.get("containers", [])
+            databases = spec.get("databases", [])
+            current_databases = current_spec.get("databases", [])
+
+            if domains != current_domains:
+                logging.info(f"[{self.namespace}/{self.name}] Detecting changes in domains")
+                for domain in current_domains:
+                    if domain not in domains:
+                        logging.info(f"[{self.namespace}/{self.name}] Deleting removed domain: {domain}")
+                        self.domain.delete_domain(domain)
+                for domain in domains:
+                    if domain not in current_domains:
+                        logging.info(f"[{self.namespace}/{self.name}] Creating new domain: {domain}")
+                        self.domain.create_domain(domain)
+
+            for container in containers:
+                matching_container = next((c for c in current_containers if c["name"] == container["name"]), None)
+                if not matching_container:
+                    logging.info(f"[{self.namespace}/{self.name}] Adding new container: {container['name']}")
+                    current_containers.append(container)
+
+            if containers != current_containers:
+                logging.info(f"[{self.namespace}/{self.name}] Updating deployment")
+                self.deployment.update_deployment(containers)
+
+            if databases != current_databases:
+                logging.info(f"[{self.namespace}/{self.name}] Detecting changes in databases")
+                for database in current_databases:
+                    if database not in databases:
+                        logging.info(f"[{self.namespace}/{self.name}] Deleting removed database: {database}")
+                        self.databases.delete_database(database)
+                for database in databases:
+                    if database not in current_databases:
+                        logging.info(f"[{self.namespace}/{self.name}] Creating new database: {database}")
+                        self.databases.create_database(database)
+
+            logging.info(f" ↳ [{self.namespace}/{self.name}] KookedApp updated successfully")
+        except Exception as e:
+            logging.error(f"[{self.namespace}/{self.name}] Error updating KookedApp: {e}")
+            raise
 
     def delete_app(self, spec):
         logging.info(f"[{self.namespace}/{self.name}] Deleting KookedApp")
@@ -131,7 +185,7 @@ class KookedAppOperator:
             for database in spec.get("databases", []):
                 self.databases.delete_database(database)
             logging.info(f" ↳ [{self.namespace}/{self.name}] All resources deleted successfully")
-        except ApiException as e:
+        except Exception as e:
             logging.error(f"[{self.namespace}/{self.name}] Error deleting resources: {e}")
             raise
 
