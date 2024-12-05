@@ -174,7 +174,8 @@ class Deployment:
                             "cpu": "500m",
                             "memory": "512Mi"
                         }
-                    )
+                    ),
+                    image_pull_policy="Always"
                 )
                 container_specs.append(container_spec)
 
