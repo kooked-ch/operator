@@ -342,7 +342,7 @@ class MariaDB(BaseDatabase):
 
 class MongoDB(BaseDatabase):
     def _get_type(self) -> str:
-        return "mongo"
+        return "mongodb"
 
     def _get_port(self) -> int:
         return 27017
