@@ -589,7 +589,7 @@ class Domain:
             if all(resources_deleted):
                 logging.info(f"    ↳ [{self.namespace}/{self.name}] Successfully deleted all domain resources for {domain['url']}")
             else:
-                logging.error(f"    ↳ [{self.namespace}/{self.name}] Some domain resources failed to delete for {domain['url']}")
+                logging.warn(f"    ↳ [{self.namespace}/{self.name}] Some domain resources failed to delete for {domain['url']}")
 
         except ApiException as e:
             if e.status != 404:
