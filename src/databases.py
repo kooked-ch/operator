@@ -163,7 +163,6 @@ class BaseDatabase(abc.ABC):
                 logging.warning(f"    ↳ [{self.namespace}/{self.name}] {resource_type.replace('_', ' ').title()} not found")
             else:
                 logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting {resource_type}: {e}")
-                raise
 
     def create_secret(self):
         """Create Kubernetes secret for the database"""
