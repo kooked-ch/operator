@@ -451,6 +451,18 @@ class MongoDB(BaseDatabase):
         }
         self._create_kubernetes_resource('service', service)
 
+    def delete_secret(self):
+        self._delete_kubernetes_resource('secret', f"{self.name}-{self.type}-secret")
+
+    def delete_stateful_set(self):
+        self._delete_kubernetes_resource('stateful_set', f"{self.name}-{self.type}")
+
+    def delete_network_policy(self):
+        self._delete_kubernetes_resource('network_policy', f"{self.name}-{self.type}")
+
+    def delete_service(self):
+        self._delete_kubernetes_resource('service', f"{self.name}-{self.type}")
+
 
 class Databases:
     """
