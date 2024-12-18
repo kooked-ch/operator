@@ -133,7 +133,6 @@ class KookedAppOperator:
             domains = spec.get("domains", [])
             current_domains = current_spec.get("domains", [])
             containers = spec.get("containers", [])
-            current_containers = current_spec.get("containers", [])
             databases = spec.get("databases", [])
             current_databases = current_spec.get("databases", [])
 
@@ -148,15 +147,8 @@ class KookedAppOperator:
                         logging.info(f"[{self.namespace}/{self.name}] Creating new domain: {domain}")
                         self.domain.create_domain(domain)
 
-            for container in containers:
-                matching_container = next((c for c in current_containers if c["name"] == container["name"]), None)
-                if not matching_container:
-                    logging.info(f"[{self.namespace}/{self.name}] Adding new container: {container['name']}")
-                    current_containers.append(container)
-
-            if containers != current_containers:
-                logging.info(f"[{self.namespace}/{self.name}] Updating deployment")
-                self.deployment.update_deployment(containers)
+            logging.info(f"[{self.namespace}/{self.name}] Updating deployment")
+            self.deployment.update_deployment(containers)
 
             if databases != current_databases:
                 logging.info(f"[{self.namespace}/{self.name}] Detecting changes in databases")
