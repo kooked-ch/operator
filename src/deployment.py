@@ -241,9 +241,10 @@ class Deployment:
         """
         try:
 
-            logging.info(f" ↳ [{self.namespace}/{self.name}] Creating deployment")
+            logging.info(f" ↳ [{self.namespace}/{self.name}] Updating configuration")
 
             validated_containers = self.validate_containers(containers)
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Validated {', '.join([container['name'] for container in validated_containers])} containers")
 
             container_specs = []
             volumes = []
