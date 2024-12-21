@@ -299,6 +299,7 @@ class Domain:
                     client.V1ServicePort(
                         port=port.port,
                         target_port=port.target_port,
+                        name=f"{port.port}-tcp",
                         protocol=port.protocol
                     )
                 )
@@ -309,6 +310,7 @@ class Domain:
                 client.V1ServicePort(
                     port=default_port,
                     target_port=default_port,
+                    name=f"{default_port}-tcp",
                     protocol="TCP"
                 )
             )
