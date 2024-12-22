@@ -206,10 +206,10 @@ class Domain:
 
             self.create_certificate(domain, domain_name),
             self.create_service(service_name, domain),
-            self.create_network_policy(service_name),
             self.create_https_middleware(domain_name),
             self.create_http_ingress(service_name, domain_name, domain),
             self.create_https_ingress(service_name, domain_name, domain),
+            self.create_network_policy(service_name),
             self.update_prometheus_monitoring()
 
         except ValueError as e:
@@ -398,7 +398,8 @@ class Domain:
                         ],
                         "ports": [
                             {
-                                "port": port.port
+                                "port": port.port,
+                                "protocol": "TCP"
                             }
                             for port in service.spec.ports
                         ]
@@ -412,10 +413,15 @@ class Domain:
                 namespace=self.namespace,
                 body=network_policy
             )
-            logging.info(f"    ↳ [{self.namespace}/{self.name}] Created network policy allowing inbound traffic for app {self.name}")
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Created network policy allowing inbound traffic")
         except ApiException as e:
             if e.status == 409:
                 logging.info(f"    ↳ [{self.namespace}/{self.name}] Network policy already exists")
+                KubernetesAPI.networking.replace_namespaced_network_policy(
+                    namespace=self.namespace,
+                    name=f"{service_name}-web",
+                    body=network_policy
+                )
             else:
                 logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating network policy: {e}")
 
