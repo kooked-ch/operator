@@ -713,20 +713,62 @@ class Domain:
             name (str): Service name
             domain (dict): Domain configuration
         """
+        service_ports = []
+        remove = False
         try:
-            KubernetesAPI.core.delete_namespaced_service(
+            service = KubernetesAPI.core.read_namespaced_service(
                 namespace=self.namespace,
                 name=service_name
             )
-            logging.info(f"    ↳ [{self.namespace}/{self.name}] Deleted service")
-            return True
+            service_exists = True
         except ApiException as e:
             if e.status == 404:
-                logging.info(f"    ↳ [{self.namespace}/{self.name}] Service not found")
                 return True
             else:
-                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting service: {e}")
-                return False
+                logging.error(f"Error reading service: {e}")
+                return
+
+        if service_exists:
+            for port in service.spec.ports:
+                if port.port != domain.get('port', 80) and remove:
+                    remove = True
+                    service_ports.append(
+                        client.V1ServicePort(
+                            port=port.port,
+                            target_port=port.target_port,
+                            name=f"{port.port}-tcp",
+                            protocol=port.protocol
+                        )
+                    )
+
+        service = client.V1Service(
+            api_version="v1",
+            kind="Service",
+            metadata=client.V1ObjectMeta(
+                name=service_name,
+                namespace=self.namespace,
+                labels={"app": self.name}
+            ),
+            spec=client.V1ServiceSpec(
+                selector={
+                    "app": self.name,
+                    "type": "container"
+                },
+                ports=service_ports,
+                type="ClusterIP"
+            )
+        )
+
+        try:
+            KubernetesAPI.core.patch_namespaced_service(
+                namespace=self.namespace,
+                name=service_name,
+                body=service
+            )
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Updated service")
+        except ApiException as e:
+            logging.error(f"Error creating/updating service: {e}")
+            return False
 
     def delete_certificate(self, domain_name):
         """
