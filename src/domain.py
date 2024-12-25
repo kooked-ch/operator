@@ -612,19 +612,72 @@ class Domain:
             name (str): Resource name
         """
         try:
-            KubernetesAPI.networking.delete_namespaced_network_policy(
+            service = KubernetesAPI.core.read_namespaced_service(
                 namespace=self.namespace,
-                name=f"{service_name}-web"
+                name=service_name
             )
-            logging.info(f"    ↳ [{self.namespace}/{self.name}] Deleted network policy")
-            return True
         except ApiException as e:
             if e.status == 404:
-                logging.info(f"    ↳ [{self.namespace}/{self.name}] Network policy not found")
                 return True
             else:
-                logging.error(f"    ↳ [{self.namespace}/{self.name}] Error deleting network policy: {e}")
-                return False
+                logging.error(f"Error reading service: {e}")
+                return
+
+        network_policy = {
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "NetworkPolicy",
+            "metadata": {
+                "name": f"{service_name}-web",
+                "namespace": self.namespace
+            },
+            "spec": {
+                "podSelector": {
+                    "matchLabels": {
+                        "app": self.name,
+                        "type": "container"
+                    }
+                },
+                "policyTypes": ["Ingress"],
+                "ingress": [
+                    {
+                        "from": [
+                            {
+                                "namespaceSelector": {
+                                    "matchLabels": {
+                                        "kubernetes.io/metadata.name": "kube-system"
+                                    }
+                                }
+                            },
+                            {
+                               "podSelector": {
+                                    "matchLabels": {
+                                        "app.kubernetes.io/name": "traefik"
+                                    }
+                                }
+                            }
+                        ],
+                        "ports": [
+                            {
+                                "port": port.port,
+                                "protocol": "TCP"
+                            }
+                            for port in service.spec.ports
+                        ]
+                    }
+                ]
+            }
+        }
+
+        try:
+            KubernetesAPI.networking.patch_namespaced_network_policy(
+                namespace=self.namespace,
+                name=f"{service_name}-web",
+                body=network_policy
+            )
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] Updated network policy")
+        except ApiException as e:
+            logging.error(f"Error creating/updating network policy: {e}")
+            return False
 
     def delete_http_ingress(self, domain_name):
         """
@@ -706,42 +759,40 @@ class Domain:
 
     def delete_service(self, service_name, domain):
         """
-        Delete a Kubernetes service for the domain.
+        Delete or update a Kubernetes service for the domain.
 
         Args:
-            namespace (str): Kubernetes namespace
-            name (str): Service name
+            service_name (str): Service name
             domain (dict): Domain configuration
         """
-        service_ports = []
-        remove = False
         try:
-            service = KubernetesAPI.core.read_namespaced_service(
+            app = KubernetesAPI.custom.get_namespaced_custom_object(
+                group="kooked.ch",
+                version="v1",
                 namespace=self.namespace,
-                name=service_name
+                plural="kookedapps",
+                name=self.name
             )
-            service_exists = True
         except ApiException as e:
             if e.status == 404:
+                logging.info(f"app {self.name} does not exist.")
                 return True
             else:
-                logging.error(f"Error reading service: {e}")
-                return
+                logging.error(f"Error reading app: {e}")
+                return False
 
-        if service_exists:
-            for port in service.spec.ports:
-                if port.port != domain.get('port', 80) and remove:
-                    remove = True
-                    service_ports.append(
-                        client.V1ServicePort(
-                            port=port.port,
-                            target_port=port.target_port,
-                            name=f"{port.port}-tcp",
-                            protocol=port.protocol
-                        )
-                    )
+        service_ports = [
+            client.V1ServicePort(
+                port=domain["port"],
+                target_port=domain["port"],
+                name=f"{domain['port']}-tcp",
+                protocol="TCP"
+            ) for domain in app["spec"]["domains"]
+        ]
 
-        service = client.V1Service(
+        print(service_ports)
+
+        updated_service = client.V1Service(
             api_version="v1",
             kind="Service",
             metadata=client.V1ObjectMeta(
@@ -760,14 +811,15 @@ class Domain:
         )
 
         try:
-            KubernetesAPI.core.patch_namespaced_service(
+            KubernetesAPI.core.replace_namespaced_service(
                 namespace=self.namespace,
                 name=service_name,
-                body=service
+                body=updated_service
             )
-            logging.info(f"    ↳ [{self.namespace}/{self.name}] Updated service")
+            logging.info(f"    ↳ [{self.namespace}/{service_name}] Updated service")
+            return True
         except ApiException as e:
-            logging.error(f"Error creating/updating service: {e}")
+            logging.error(f"Error updating service: {e}")
             return False
 
     def delete_certificate(self, domain_name):

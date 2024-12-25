@@ -111,7 +111,7 @@ spec:
       serviceAccountName: operator-sa
       containers:
         - name: operator
-          image: ghcr.io/kooked-ch/operator:3.0.10
+          image: ghcr.io/kooked-ch/operator:3.0.11
           imagePullPolicy: Always
           resources:
             limits:
