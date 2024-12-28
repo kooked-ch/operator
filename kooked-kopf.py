@@ -77,6 +77,11 @@ class KookedAppOperator:
     def create_app(self, spec):
         logging.info(f"[{self.namespace}/{self.name}] Creating KookedApp")
         containers = spec.get("containers", [])
+
+        if len(containers) == 0:
+            logging.info(f" ↳ [{self.namespace}/{self.name}] No containers found in spec")
+            return
+
         domains = spec.get("domains", [])
 
         port_container_map = {}
