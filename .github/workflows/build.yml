@@ -19,11 +19,11 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v4
 
-            - name: Get Version from package.json
+            - name: Get Version from setup.py
               id: get_version
               run: |
-                  version=$(jq -r .version package.json)
-                  echo "Version from package.json: $version"
+                  version=$(grep 'version=' setup.py | sed -E "s/.*version=['\"]([^'\"]+)['\"].*/\\1/")
+                  echo "version: $version"
                   echo "version=$version" >> $GITHUB_OUTPUT
 
     build:
