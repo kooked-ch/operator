@@ -153,7 +153,10 @@ class KookedAppOperator:
                         self.domain.create_domain(domain)
 
             logging.info(f"[{self.namespace}/{self.name}] Updating deployment")
-            self.deployment.update_deployment(containers)
+            if len(containers) == 0:
+                self.deployment.delete_deployment()
+            else:
+                self.deployment.update_deployment(containers)
 
             if databases != current_databases:
                 logging.info(f"[{self.namespace}/{self.name}] Detecting changes in databases")
