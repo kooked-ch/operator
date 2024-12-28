@@ -327,20 +327,29 @@ class Deployment:
                 )
             )
 
-            KubernetesAPI.apps.replace_namespaced_deployment(
-                namespace=self.namespace,
-                name=self.name,
-                body=deployment
-            )
+            try:
+                KubernetesAPI.apps.replace_namespaced_deployment(
+                    namespace=self.namespace,
+                    name=self.name,
+                    body=deployment
+                )
+            except ApiException as e:
+                if e.status == 404:
+                    KubernetesAPI.apps.create_namespaced_deployment(
+                        namespace=self.namespace,
+                        body=deployment
+                    )
+                else:
+                    raise ValueError("Error updating deployment")
 
             logging.info(f"    ↳ [{self.namespace}/{self.name}] Updated deployment with {len(validated_containers)} containers")
 
         except ApiException as e:
-            logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating deployment: {e}")
-            raise ValueError("Error creating deployment")
+            logging.error(f"    ↳ [{self.namespace}/{self.name}] Error updating deployment: {e}")
+            raise ValueError("Error updating deployment")
         except Exception as e:
-            logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating deployment: {e}", exc_info=True)
-            raise ValueError("Error creating deployment")
+            logging.error(f"    ↳ [{self.namespace}/{self.name}] Error updating deployment: {e}", exc_info=True)
+            raise ValueError("Error updating deployment")
 
     def delete_deployment(self):
         """
