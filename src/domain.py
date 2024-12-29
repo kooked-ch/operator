@@ -618,7 +618,10 @@ class Domain:
             )
         except ApiException as e:
             if e.status == 404:
-                return True
+                KubernetesAPI.networking.delete_namespaced_network_policy(
+                    namespace=self.namespace,
+                    name=f"{service_name}-web"
+                )
             else:
                 logging.error(f"Error reading service: {e}")
                 return
