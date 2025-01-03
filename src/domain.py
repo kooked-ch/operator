@@ -784,6 +784,23 @@ class Domain:
                 logging.error(f"Error reading app: {e}")
                 return False
 
+        if "domains" not in app["spec"]:
+            logging.info(f"app {self.name} does not have domains.")
+            try:
+                KubernetesAPI.core.delete_namespaced_service(
+                    namespace=self.namespace,
+                    name=service_name
+                )
+                logging.info(f"    ↳ [{self.namespace}/{service_name}] Deleted service")
+                return True
+            except ApiException as e:
+                if e.status == 404:
+                    logging.info(f"    ↳ [{self.namespace}/{service_name}] Service not found")
+                    return True
+                else:
+                    logging.error(f"Error deleting service: {e}")
+                    return False
+
         service_ports = [
             client.V1ServicePort(
                 port=domain["port"],
@@ -792,8 +809,6 @@ class Domain:
                 protocol="TCP"
             ) for domain in app["spec"]["domains"]
         ]
-
-        print(service_ports)
 
         updated_service = client.V1Service(
             api_version="v1",
