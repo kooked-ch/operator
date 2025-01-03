@@ -622,6 +622,7 @@ class Domain:
                     namespace=self.namespace,
                     name=f"{service_name}-web"
                 )
+                return True
             else:
                 logging.error(f"Error reading service: {e}")
                 return
@@ -785,7 +786,7 @@ class Domain:
                 return False
 
         if "domains" not in app["spec"]:
-            logging.info(f"app {self.name} does not have domains.")
+            logging.info(f"    ↳ [{self.namespace}/{self.name}] App does not have domains.")
             try:
                 KubernetesAPI.core.delete_namespaced_service(
                     namespace=self.namespace,
