@@ -23,6 +23,8 @@ spec:
             spec:
               type: object
               properties:
+                serviceAccountName:
+                  type: string
                 replicas:
                   type: integer
                 containers:
