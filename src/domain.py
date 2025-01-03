@@ -590,7 +590,7 @@ class Domain:
                 self.delete_https_middleware(domain_name),
                 self.delete_service(service_name, domain),
                 self.delete_network_policy(service_name),
-                # self.delete_certificate(domain_name)
+                self.delete_certificate(domain_name),
                 self.update_prometheus_monitoring()
             ]
 
