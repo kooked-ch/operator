@@ -18,7 +18,7 @@ def on_kopf_startup(**kwargs):
     Initialize.create_monitoring()
 
 
-@kopf.on.create('kooked.ch', 'v1', 'kookedapps', retries=3)
+@kopf.on.create('kooked.ch', 'v1', 'kookedapps', retries=2)
 def on_create_app(spec, name, namespace, **kwargs):
     operator = KookedAppOperator(name, namespace, spec)
     try:
@@ -34,7 +34,7 @@ def on_create_app(spec, name, namespace, **kwargs):
         )
 
 
-@kopf.on.update('kooked.ch', 'v1', 'kookedapps')
+@kopf.on.update('kooked.ch', 'v1', 'kookedapps', retries=2)
 def on_update_app(spec, name, namespace, **kwargs):
     operator = KookedAppOperator(name, namespace, spec)
     try:
