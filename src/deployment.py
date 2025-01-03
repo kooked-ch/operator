@@ -114,7 +114,7 @@ class Deployment:
                 logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating PVC: {e}")
                 raise ValueError(f"Error creating PVC {volume_name}")
 
-    def create_deployment(self, containers):
+    def create_deployment(self, containers, replicas, serviceAccountName):
         """
         Create Kubernetes Deployments for multiple containers.
 
@@ -190,7 +190,8 @@ class Deployment:
                     }
                 ),
                 spec=client.V1DeploymentSpec(
-                    replicas=1,
+                    replicas=replicas,
+                    serviceAccountName=serviceAccountName,
                     selector=client.V1LabelSelector(
                         match_labels={
                             "app": self.name,
@@ -229,7 +230,7 @@ class Deployment:
             logging.error(f"    ↳ [{self.namespace}/{self.name}] Error creating deployment: {e}", exc_info=True)
             raise ValueError("Error creating deployment")
 
-    def update_deployment(self, containers):
+    def update_deployment(self, containers, replicas, serviceAccountName):
         """
         Update Kubernetes Deployments for multiple containers.
 
@@ -305,7 +306,8 @@ class Deployment:
                     }
                 ),
                 spec=client.V1DeploymentSpec(
-                    replicas=1,
+                    replicas=replicas,
+                    serviceAccountName=serviceAccountName,
                     selector=client.V1LabelSelector(
                         match_labels={
                             "app": self.name,
