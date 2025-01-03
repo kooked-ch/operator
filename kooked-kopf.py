@@ -114,7 +114,7 @@ class KookedAppOperator:
                         container["ports"].append(domain.get("port"))
                     break
 
-        self.deployment.create_deployment(containers)
+        self.deployment.create_deployment(containers, replicas=spec.get("replicas", 1), serviceAccountName=spec.get("serviceAccountName", None))
 
         for database in spec.get("databases", []):
             self.databases.create_database(database)
@@ -156,7 +156,7 @@ class KookedAppOperator:
             if len(containers) == 0:
                 self.deployment.delete_deployment()
             else:
-                self.deployment.update_deployment(containers)
+                self.deployment.update_deployment(containers, replicas=spec.get("replicas", 1), serviceAccountName=spec.get("serviceAccountName", None))
 
             if databases != current_databases:
                 logging.info(f"[{self.namespace}/{self.name}] Detecting changes in databases")
