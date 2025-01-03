@@ -191,7 +191,6 @@ class Deployment:
                 ),
                 spec=client.V1DeploymentSpec(
                     replicas=replicas,
-                    serviceAccountName=serviceAccountName,
                     selector=client.V1LabelSelector(
                         match_labels={
                             "app": self.name,
@@ -206,6 +205,7 @@ class Deployment:
                             }
                         ),
                         spec=client.V1PodSpec(
+                            service_account_name=serviceAccountName,
                             containers=container_specs,
                             volumes=volumes
                         )
@@ -307,7 +307,6 @@ class Deployment:
                 ),
                 spec=client.V1DeploymentSpec(
                     replicas=replicas,
-                    serviceAccountName=serviceAccountName,
                     selector=client.V1LabelSelector(
                         match_labels={
                             "app": self.name,
@@ -322,6 +321,7 @@ class Deployment:
                             }
                         ),
                         spec=client.V1PodSpec(
+                            service_account_name=serviceAccountName,
                             containers=container_specs,
                             volumes=volumes
                         )
