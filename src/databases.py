@@ -339,6 +339,129 @@ class MariaDB(BaseDatabase):
         self._delete_kubernetes_resource('service', f"{self.name}-{self.type}")
 
 
+class PostgresDB(BaseDatabase):
+    def _get_type(self) -> str:
+        return "postgres"
+
+    def _get_port(self) -> int:
+        return 5432
+
+    def _get_image(self) -> str:
+        return "postgres:15.3"
+
+    def _get_volume_mount_path(self) -> str:
+        return "/var/lib/postgresql/data"
+
+    def create_secret(self):
+        secret = {
+            "apiVersion": "v1",
+            "kind": "Secret",
+            "metadata": {
+                "name": f"{self.name}-{self.type}-secret",
+                "namespace": self.namespace
+            },
+            "stringData": {
+                "POSTGRES_USER": self.config.user,
+                "POSTGRES_PASSWORD": self.config.password,
+                "POSTGRES_DB": self.config.name
+            }
+        }
+        self._create_kubernetes_resource('secret', secret)
+
+    def create_stateful_set(self):
+        statefulset = {
+            "apiVersion": "apps/v1",
+            "kind": "StatefulSet",
+            "metadata": {
+                "name": f"{self.name}-{self.type}",
+                "namespace": self.namespace
+            },
+            "spec": {
+                "serviceName": f"{self.name}-{self.type}",
+                "replicas": 1,
+                "selector": {
+                    "matchLabels": {
+                        "app": self.name,
+                        "type": self.type
+                    }
+                },
+                "template": {
+                    "metadata": {
+                        "labels": {
+                            "app": self.name,
+                            "type": self.type
+                        }
+                    },
+                    "spec": {
+                        "containers": [{
+                            "name": "postgres",
+                            "image": self._get_image(),
+                            "ports": [{"containerPort": self._get_port()}],
+                            "envFrom": [{"secretRef": {"name": f"{self.name}-{self.type}-secret"}}],
+                            "volumeMounts": [{"mountPath": self._get_volume_mount_path(), "name": "postgres-data"}]
+                        }]
+                    }
+                },
+                "volumeClaimTemplates": [{
+                    "metadata": {"name": "postgres-data"},
+                    "spec": {
+                        "accessModes": ["ReadWriteMany"],
+                        "storageClassName": "nfs-client",
+                        "resources": {"requests": {"storage": "5Gi"}}
+                    }
+                }]
+            }
+        }
+        self._create_kubernetes_resource('stateful_set', statefulset)
+
+    def create_network_policy(self):
+        network_policy = {
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "NetworkPolicy",
+            "metadata": {
+                "name": f"{self.name}-{self.type}",
+                "namespace": self.namespace
+            },
+            "spec": {
+                "podSelector": {"matchLabels": {"app": self.name, "type": self.type}},
+                "ingress": [{
+                    "from": [{"podSelector": {"matchLabels": {"app": self.name, "type": "container"}}}],
+                    "ports": [{"protocol": "TCP", "port": self._get_port()}]
+                }],
+                "policyTypes": ["Ingress"]
+            }
+        }
+        self._create_kubernetes_resource('network_policy', network_policy)
+
+    def create_service(self):
+        service = {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "name": f"{self.name}-{self.type}",
+                "namespace": self.namespace
+            },
+            "spec": {
+                "selector": {"app": self.name, "type": self.type},
+                "ports": [{"protocol": "TCP", "port": self._get_port(), "targetPort": self._get_port()}],
+                "clusterIP": "None"
+            }
+        }
+        self._create_kubernetes_resource('service', service)
+
+    def delete_secret(self):
+        self._delete_kubernetes_resource('secret', f"{self.name}-{self.type}-secret")
+
+    def delete_stateful_set(self):
+        self._delete_kubernetes_resource('stateful_set', f"{self.name}-{self.type}")
+
+    def delete_network_policy(self):
+        self._delete_kubernetes_resource('network_policy', f"{self.name}-{self.type}")
+
+    def delete_service(self):
+        self._delete_kubernetes_resource('service', f"{self.name}-{self.type}")
+
+        
 class MongoDB(BaseDatabase):
     def _get_type(self) -> str:
         return "mongodb"
@@ -489,11 +612,13 @@ class Databases:
         logging.info(f" ↳ [{self.namespace}/{self.name}] Creating database resources for {config['name']}")
 
         db_config = DatabaseConfig(config)
-        
+
         if db_config.provider.lower() == 'mongodb':
             database = MongoDB(self.name, self.namespace, db_config)
         elif db_config.provider.lower() == 'mariadb':
             database = MariaDB(self.name, self.namespace, db_config)
+        elif db_config.provider.lower() == 'postgresdb':
+            database = PostgresDB(self.name, self.namespace, db_config)
         else:
             raise ValueError(f"Unsupported database provider: {db_config.provider}")
 
@@ -509,11 +634,13 @@ class Databases:
         logging.info(f" ↳ [{self.namespace}/{self.name}] Deleting database resources for {config['name']}")
 
         db_config = DatabaseConfig(config)
-        
+
         if db_config.provider.lower() == 'mongodb':
             database = MongoDB(self.name, self.namespace, db_config)
         elif db_config.provider.lower() == 'mariadb':
             database = MariaDB(self.name, self.namespace, db_config)
+        elif db_config.provider.lower() == 'postgresdb':
+            database = PostgresDB(self.name, self.namespace, db_config)
         else:
             raise ValueError(f"Unsupported database provider: {db_config.provider}")
 
