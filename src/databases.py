@@ -339,7 +339,7 @@ class MariaDB(BaseDatabase):
         self._delete_kubernetes_resource('service', f"{self.name}-{self.type}")
 
 
-class PostgresDB(BaseDatabase):
+class PostgreSQL(BaseDatabase):
     def _get_type(self) -> str:
         return "postgres"
 
@@ -461,7 +461,7 @@ class PostgresDB(BaseDatabase):
     def delete_service(self):
         self._delete_kubernetes_resource('service', f"{self.name}-{self.type}")
 
-        
+
 class MongoDB(BaseDatabase):
     def _get_type(self) -> str:
         return "mongodb"
@@ -617,8 +617,8 @@ class Databases:
             database = MongoDB(self.name, self.namespace, db_config)
         elif db_config.provider.lower() == 'mariadb':
             database = MariaDB(self.name, self.namespace, db_config)
-        elif db_config.provider.lower() == 'postgresdb':
-            database = PostgresDB(self.name, self.namespace, db_config)
+        elif db_config.provider.lower() == 'postgresql':
+            database = PostgreSQL(self.name, self.namespace, db_config)
         else:
             raise ValueError(f"Unsupported database provider: {db_config.provider}")
 
@@ -639,8 +639,8 @@ class Databases:
             database = MongoDB(self.name, self.namespace, db_config)
         elif db_config.provider.lower() == 'mariadb':
             database = MariaDB(self.name, self.namespace, db_config)
-        elif db_config.provider.lower() == 'postgresdb':
-            database = PostgresDB(self.name, self.namespace, db_config)
+        elif db_config.provider.lower() == 'postgresql':
+            database = PostgreSQL(self.name, self.namespace, db_config)
         else:
             raise ValueError(f"Unsupported database provider: {db_config.provider}")
 
