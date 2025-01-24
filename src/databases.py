@@ -223,10 +223,10 @@ class MariaDB(BaseDatabase):
         return 3306
 
     def _get_image(self) -> str:
-        return "mariadb:11.6.2"
+        return "bitnami/mariadb:11.4.4"
 
     def _get_volume_mount_path(self) -> str:
-        return "/var/lib/mysql"
+        return "/bitnami/mariadb"
 
     def create_secret(self):
         secret = {
@@ -237,10 +237,12 @@ class MariaDB(BaseDatabase):
                 "namespace": self.namespace
             },
             "stringData": {
-                "MARIADB_ROOT_PASSWORD": self.generate_random_string(36),
+                "MARIADB_ROOT_PASSWORD": self.generate_random_string(64),
                 "MARIADB_USER": self.config.user,
                 "MARIADB_PASSWORD": self.config.password,
-                "MARIADB_DATABASE": self.config.name
+                "MARIADB_DATABASE": self.config.name,
+                "MARIADB_CHARACTER_SET": "utf8mb4",
+                "MARIADB_COLLATE": "utf8mb4_unicode_ci"
             }
         }
         self._create_kubernetes_resource('secret', secret)
