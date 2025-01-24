@@ -162,11 +162,11 @@ class KookedAppOperator:
                 logging.info(f"[{self.namespace}/{self.name}] Detecting changes in databases")
                 for database in current_databases:
                     if database not in databases:
-                        logging.info(f"[{self.namespace}/{self.name}] Deleting removed database: {database}")
+                        logging.info(f"[{self.namespace}/{self.name}] Deleting removed database: {database.get('name')}")
                         self.databases.delete_database(database)
                 for database in databases:
                     if database not in current_databases:
-                        logging.info(f"[{self.namespace}/{self.name}] Creating new database: {database}")
+                        logging.info(f"[{self.namespace}/{self.name}] Creating new database: {database.get('name')}")
                         self.databases.create_database(database)
 
             logging.info(f" ↳ [{self.namespace}/{self.name}] KookedApp updated successfully")
