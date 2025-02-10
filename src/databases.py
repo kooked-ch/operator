@@ -343,7 +343,7 @@ class MariaDB(BaseDatabase):
 
 class PostgreSQL(BaseDatabase):
     def _get_type(self) -> str:
-        return "postgres"
+        return "postgresql"
 
     def _get_port(self) -> int:
         return 5432
