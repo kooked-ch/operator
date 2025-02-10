@@ -40,7 +40,7 @@ class DatabaseConfig:
         if config['name'].startswith('-') or config['name'].endswith('-'):
             raise ValueError(f"Database name {config['name']} cannot start or end with a hyphen")
 
-        if config['provider'].lower() not in ['mongodb', 'mariadb']:
+        if config['provider'].lower() not in ['mongodb', 'mariadb', 'postgresql']:
             raise ValueError(f"Unsupported provider: {config['provider']}")
 
 
