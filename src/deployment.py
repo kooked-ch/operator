@@ -168,11 +168,13 @@ class Deployment:
                     resources=client.V1ResourceRequirements(
                         requests={
                             "cpu": "100m",
-                            "memory": "128Mi"
+                            "memory": "128Mi",
+                            "ephemeral-storage": "50Mi"
                         },
                         limits={
                             "cpu": "500m",
-                            "memory": "512Mi"
+                            "memory": "512Mi",
+                            "ephemeral-storage": "100Mi"
                         }
                     ),
                     image_pull_policy="Always"
